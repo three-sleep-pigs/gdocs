@@ -5,13 +5,13 @@ import "time"
 // chunk server -----> master
 
 type HeartbeatArg struct {
-	address          string // chunk server address
-	toExtendLeases  []int64 // leases to be extended
-	toRemoveChunks []int64 // chunks to be removed
+	Address          string // chunk server address
+	ToExtendLeases  []int64 // leases to be extended
+	ToRemoveChunks []int64 // chunks to be removed
 }
 
 type HeartbeatReply struct {
-	garbage []int64
+	Garbage []int64
 }
 
 // master -----> chunk server
@@ -20,36 +20,36 @@ type ReportSelfArg struct {
 }
 
 type ReportSelfReply struct {
-	chunks []rpcChunkMetadata
+	Chunks []rpcChunkMetadata
 }
 
 // client -----> master chunk
 
 type GetReplicasArg struct {
-	handle int64
+	Handle int64
 }
 type GetReplicasReply struct {
-	primary     string
+	Primary     string
 	// end time of lease
-	expire      time.Time
-	secondaries []string
+	Expire      time.Time
+	Secondaries []string
 }
 
 type GetFileInfoArg struct {
-	path string
+	Path string
 }
 type GetFileInfoReply struct {
-	isDir  bool
-	size int64
-	chunkNum int64
+	IsDir  bool
+	Size int64
+	ChunkNum int64
 }
 
 type GetChunkHandleArg struct {
-	path  string
+	Path  string
 	Index int64
 }
 type GetChunkHandleReply struct {
-	handle int64
+	Handle int64
 }
 
 // client -----> master namespace
