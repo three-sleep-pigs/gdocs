@@ -2,6 +2,7 @@ package master
 
 import (
 	"../../gfs"
+	"../cmap"
 	"fmt"
 	"net"
 	"strings"
@@ -17,15 +18,14 @@ type Master struct {
 	shutdown   chan struct{}
 	dead       bool // set to ture if server is shutdown
 
+	// all keys from the following 3 maps are string
+	// initialization in new and serve
 	// from full path to file metadata
-	fnsLock        sync.RWMutex
-	fileNamespace  map[string]*FileMetadata
+	fileNamespace  cmap.ConcurrentMap
 	// from chunk handle to chunk metadata
-	cnsLock        sync.RWMutex
-	chunkNamespace map[int64]*ChunkMetadata
+	chunkNamespace cmap.ConcurrentMap
 	// from chunk server address to chunk server info
-	csiLock 	   sync.RWMutex
-	chunkServerInfos	map[string]*ChunkServerInfo
+	chunkServerInfos	cmap.ConcurrentMap
 
 	// list of chunk handles need a new replicas
 	rnlLock 	sync.RWMutex
@@ -81,7 +81,12 @@ type ChunkServerInfo struct {
 // NewAndServe starts a master and returns the pointer to it.
 func NewAndServe(address string, serverRoot string) *Master {
 	// TODO: small
-	return nil
+	ret := &Master{address: address}
+	// initial 3 concurrent maps
+	ret.fileNamespace = cmap.New()
+	ret.chunkNamespace = cmap.New()
+	ret.chunkServerInfos = cmap.New()
+	return ret
 }
 
 // serverCheck checks all chunkserver according to last heartbeat time
@@ -135,16 +140,14 @@ func (m *Master) RPCCreateFile(args gfs.CreateFileArg, reply *gfs.CreateFileRepl
 	if !ok {
 		return err
 	}
-
-	m.fnsLock.Lock()
-	_, exist := m.fileNamespace[args.Path]
-	if exist {
-		err = fmt.Errorf("path %s has already existed", args.Path)
-		m.fnsLock.Unlock()
-		return err
+	fileMetadata := new(FileMetadata)
+	fileMetadata.isDir = false
+	fileMetadata.size = 0
+	fileMetadata.chunkHandles = nil
+	ok = m.fileNamespace.SetIfAbsent(args.Path, fileMetadata)
+	if !ok {
+		return fmt.Errorf("path %s has already existed", args.Path)
 	}
-	m.fileNamespace[args.Path] = &FileMetadata{isDir: false, size: 0, chunkHandles: nil}
-	m.fnsLock.Unlock()
 	return nil
 }
 
@@ -157,22 +160,22 @@ func (m *Master) RPCDeleteFile(args gfs.DeleteFileArg, reply *gfs.DeleteFileRepl
 		return err
 	}
 
-	m.fnsLock.Lock()
-	fileMetadata, exist := m.fileNamespace[args.Path]
+	fileMetadataFound, exist := m.fileNamespace.Get(args.Path)
 	if !exist {
-		err = fmt.Errorf("path %s has not existed", args.Path)
-		m.fnsLock.Unlock()
-		return err
+		return fmt.Errorf("path %s is not exsited", args.Path)
 	}
+	var fileMetadata = fileMetadataFound.(*FileMetadata)
+	fileMetadata.RLock()
 	if fileMetadata.isDir {
-		err = fmt.Errorf("path %s is not a file", args.Path)
-		m.fnsLock.Unlock()
-		return err
+		fileMetadata.RUnlock()
+		return fmt.Errorf("path %s is not a file", args.Path)
 	}
-	delete(m.fileNamespace, args.Path)
+	fileMetadata.RUnlock()
+	// may fail but without error throw
+	m.fileNamespace.Remove(args.Path)
 	// lazy delete
-	m.fileNamespace[gfs.DeletedFilePrefix + args.Path] = fileMetadata
-	m.fnsLock.Unlock()
+	// may fail
+	m.fileNamespace.SetIfAbsent(gfs.DeletedFilePrefix + args.Path, fileMetadata)
 	return nil
 }
 
@@ -190,33 +193,41 @@ func (m *Master) RPCRenameFile(args gfs.RenameFileArg, reply *gfs.RenameFileRepl
 	if !ok {
 		return err
 	}
-	m.fnsLock.Lock()
-	sourceFileMetadata, sourceExist := m.fileNamespace[args.Source]
+	sourceFileMetadataFound, sourceExist := m.fileNamespace.Get(args.Source)
 	if !sourceExist {
 		err = fmt.Errorf("source path %s has not existed", args.Source)
-		m.fnsLock.Unlock()
 		return err
 	}
+	sourceFileMetadata := sourceFileMetadataFound.(*FileMetadata)
 	if sourceFileMetadata.isDir {
 		err = fmt.Errorf("source path %s is not a file", args.Source)
-		m.fnsLock.Unlock()
 		return err
 	}
-	_, targetExist := m.fileNamespace[args.Target]
-	if targetExist {
+	setOk := m.fileNamespace.SetIfAbsent(args.Target, sourceFileMetadata)
+	if !setOk {
 		err = fmt.Errorf("target path %s has already existed", args.Target)
-		m.fnsLock.Unlock()
 		return err
 	}
-	delete(m.fileNamespace, args.Source)
-	m.fileNamespace[args.Target] = sourceFileMetadata
-	m.fnsLock.Unlock()
+	m.fileNamespace.Remove(args.Source)
 	return nil
 }
 
 // RPCMkdir is called by client to make a new directory
 func (m *Master) RPCMkdir(args gfs.MkdirArg, reply *gfs.MkdirReply) error {
-	// TODO: big
+	parents := getParents(args.Path)
+	ok, fileMetadatas, err := m.acquireParentsRLocks(parents)
+	defer m.unlockParentsRLocks(fileMetadatas)
+	if !ok {
+		return err
+	}
+	fileMetadata := new(FileMetadata)
+	fileMetadata.isDir = true
+	fileMetadata.size = 0
+	fileMetadata.chunkHandles = nil
+	ok = m.fileNamespace.SetIfAbsent(args.Path, fileMetadata)
+	if !ok {
+		return fmt.Errorf("path %s has already existed", args.Path)
+	}
 	return nil
 }
 func getParents(path string) []string {
@@ -238,9 +249,8 @@ func getParents(path string) []string {
 func (m *Master) acquireParentsRLocks(parents []string) (bool, []*FileMetadata, error)  {
 	var fileMetadatas []*FileMetadata
 	for _, value := range parents {
-		m.fnsLock.RLock()
-		fileMetadata, ok := m.fileNamespace[value]
-		m.fnsLock.RUnlock()
+		fileMetadataFound, ok := m.fileNamespace.Get(value)
+		fileMetadata := fileMetadataFound.(*FileMetadata)
 		if !ok {
 			return false, nil, fmt.Errorf("path %s doesn't exist", value)
 		}
