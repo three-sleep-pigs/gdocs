@@ -17,6 +17,8 @@ type Master struct {
 	l          net.Listener
 	shutdown   chan struct{}
 	dead       bool // set to ture if server is shutdown
+	nhLock 		sync.Mutex
+	nextHandle	int64
 
 	// all keys from the following 3 maps are string
 	// initialization in new and serve
@@ -81,7 +83,7 @@ type ChunkServerInfo struct {
 // NewAndServe starts a master and returns the pointer to it.
 func NewAndServe(address string, serverRoot string) *Master {
 	// TODO: small
-	ret := &Master{address: address}
+	ret := &Master{address: address, nextHandle: 0}
 	// initial 3 concurrent maps
 	ret.fileNamespace = cmap.New()
 	ret.chunkNamespace = cmap.New()
@@ -105,32 +107,288 @@ func (m *Master) reReplication(handle int64) error {
 
 // RPCHeartbeat is called by chunkserver to let the master know that a chunkserver is alive
 func (m *Master) RPCHeartbeat(args gfs.HeartbeatArg, reply *gfs.HeartbeatReply) error {
-	// TODO: big
+	// new chunk server info
+	var isFirst bool
+	chunkServerInfo := new(ChunkServerInfo)
+	chunkServerInfo.Lock()
+	defer chunkServerInfo.Unlock()
+	chunkServerInfo.lastHeartbeat = time.Now()
+	chunkServerInfo.chunks = make(map[int64]bool)
+	chunkServerInfo.garbage = nil
+	// check and set
+	ok := m.chunkServerInfos.SetIfAbsent(args.Address, chunkServerInfo)
+	if !ok {
+		// server exist
+		isFirst = true
+		// no method to delete chunk server info so can not check ok
+		chunkServerInfoFound, _:= m.chunkServerInfos.Get(args.Address)
+		chunkServerInfo = chunkServerInfoFound.(*ChunkServerInfo)
+		chunkServerInfo.Lock()
+		defer chunkServerInfo.RLock()
+		// update time
+		chunkServerInfo.lastHeartbeat = time.Now()
+		// send garbage
+		reply.Garbage = chunkServerInfo.garbage
+		for _, v := range chunkServerInfo.garbage {
+			chunkServerInfo.chunks[v] = false
+		}
+		chunkServerInfo.garbage = make([]int64, 0)
+	}
 
+	if isFirst {
+		// if is first heartbeat, let chunkserver report itself
+		var r gfs.ReportSelfReply
+		err := gfs.Call(args.Address, "ChunkServer.RPCReportSelf", gfs.ReportSelfArg{}, &r)
+		if err != nil {
+			return err
+		}
+
+		for _, v := range r.Chunks {
+			chunkMetadataFound, e := m.chunkNamespace.Get(fmt.Sprintf("%d", v.ChunkHandle))
+			if !e {
+				continue
+			}
+			chunkMetadata := chunkMetadataFound.(*ChunkMetadata)
+			chunkMetadata.Lock()
+			if v.Checksum == chunkMetadata.checksum {
+				if v.Version == chunkMetadata.version {
+					chunkMetadata.location = append(chunkMetadata.location, args.Address)
+				} else {
+					chunkServerInfo.garbage = append(chunkServerInfo.garbage, v.ChunkHandle)
+				}
+			} else {
+				chunkServerInfo.garbage = append(chunkServerInfo.garbage, v.ChunkHandle)
+			}
+			chunkMetadata.Unlock()
+		}
+	} else {
+		for _, handle := range args.ToExtendLeases {
+			// extend lease
+			chunkMetadataFound, exist:= m.chunkNamespace.Get(fmt.Sprintf("%d", handle))
+			if !exist {
+				return fmt.Errorf("invalid chunk handle %d", handle)
+			}
+			chunkMetadata := chunkMetadataFound.(*ChunkMetadata)
+			chunkMetadata.Lock()
+			if chunkMetadata.primary != args.Address {
+				chunkMetadata.Unlock()
+				return fmt.Errorf("%s does not hold the lease for chunk %d", args.Address, handle)
+			}
+			chunkMetadata.expire = time.Now().Add(gfs.LeaseExpire)
+			chunkMetadata.Unlock()
+		}
+	}
 	return nil
 }
 
 // RPCGetReplicas is called by client to find all chunk server that holds the chunk.
 // lease holder and secondaries of a chunk.
 func (m *Master) RPCGetReplicas(args gfs.GetReplicasArg, reply *gfs.GetReplicasReply) error {
-	// TODO: big
+	chunkMetadataFound, ok := m.chunkNamespace.Get(fmt.Sprintf("%d", args.Handle))
+	if !ok {
+		return fmt.Errorf("cannot find chunk %d", args.Handle)
+	}
+	chunkMetadata := chunkMetadataFound.(*ChunkMetadata)
+	var staleServers []string
+	chunkMetadata.Lock()
+	defer chunkMetadata.Unlock()
+	// check expire
+	if chunkMetadata.expire.Before(time.Now()) {
+		// expire is old
+		chunkMetadata.version++
+		// prepare new rpc arg
+		checkVersionArg := gfs.CheckVersionArg{Handle: args.Handle, Version: chunkMetadata.version}
+		// chunk server having new version
+		var newList []string
+		// lock for newList
+		var lock sync.Mutex
+		// wait group to make sure all goroutines end
+		var wg sync.WaitGroup
+		wg.Add(len(chunkMetadata.location))
+		for _, v := range chunkMetadata.location {
+			go func(addr string) {
+				var ret gfs.CheckVersionReply
+				// call rpc to let all chunk servers check their own version
+				err := gfs.Call(addr, "ChunkServer.RPCCheckVersion", checkVersionArg, &ret)
+				if err == nil && ret.Stale == false {
+					lock.Lock()
+					newList = append(newList, addr)
+					lock.Unlock()
+				} else {
+					// add to garbage collection
+					// must exist no need to check ok
+					chunkServerInfoFound, _:= m.chunkServerInfos.Get(addr)
+					chunkServerInfo := chunkServerInfoFound.(*ChunkServerInfo)
+					chunkServerInfo.Lock()
+					chunkServerInfo.garbage = append(chunkServerInfo.garbage, args.Handle)
+					chunkServerInfo.Unlock()
+					staleServers = append(staleServers, addr)
+				}
+				wg.Done()
+			}(v)
+		}
+		wg.Wait()
 
+		// change location in metadata
+		chunkMetadata.location = make([]string, len(newList))
+		for i, value := range newList {
+			chunkMetadata.location[i] = value
+		}
+		// check if satisfy min replica num
+		if len(chunkMetadata.location) < gfs.MinimumNumReplicas {
+			m.rnlLock.Lock()
+			m.replicasNeedList = append(m.replicasNeedList, args.Handle)
+			m.rnlLock.Unlock()
+
+			if len(chunkMetadata.location) == 0 {
+				// !! ATTENTION !!
+				chunkMetadata.version--
+				return fmt.Errorf("no replica of %v", args.Handle)
+			}
+		}
+
+		// choose primary, !!error handle no replicas!!
+		chunkMetadata.primary = chunkMetadata.location[0]
+		chunkMetadata.expire = time.Now().Add(gfs.LeaseExpire)
+	}
+	reply.Primary = chunkMetadata.primary
+	reply.Expire = chunkMetadata.expire
+	for _, v := range chunkMetadata.location {
+		if v != chunkMetadata.primary {
+			reply.Secondaries = append(reply.Secondaries, v)
+		}
+	}
 	return nil
 }
 
 // RPCGetFileInfo is called by client to get file information
 func (m *Master) RPCGetFileInfo(args gfs.GetFileInfoArg, reply *gfs.GetFileInfoReply) error {
-	// TODO: big
-
+	parents := getParents(args.Path)
+	ok, fileMetadatas, err := m.acquireParentsRLocks(parents)
+	defer m.unlockParentsRLocks(fileMetadatas)
+	if !ok {
+		return err
+	}
+	fileMetadataFound, exist := m.fileNamespace.Get(args.Path)
+	if !exist {
+		return fmt.Errorf("path %s does not exsit", args.Path)
+	}
+	fileMetadata := fileMetadataFound.(*FileMetadata)
+	fileMetadata.RLock()
+	defer fileMetadata.RUnlock()
+	reply.Size = fileMetadata.size
+	reply.ChunkNum = int64(len(fileMetadata.chunkHandles))
+	reply.IsDir = fileMetadata.isDir
 	return nil
 }
 
 // RPCGetChunkHandle returns the chunk handle of (path, index).
 // If the requested index is bigger than the number of chunks of this path by one, create one.
 func (m *Master) RPCGetChunkHandle(args gfs.GetChunkHandleArg, reply *gfs.GetChunkHandleReply) error {
-	// TODO: big
+	parents := getParents(args.Path)
+	ok, fileMetadatas, err := m.acquireParentsRLocks(parents)
+	defer m.unlockParentsRLocks(fileMetadatas)
+	if !ok {
+		return err
+	}
+	fileMetadataFound, exist := m.fileNamespace.Get(args.Path)
+	if !exist {
+		return fmt.Errorf("path %s does not exsit", args.Path)
+	}
+	fileMetadata := fileMetadataFound.(*FileMetadata)
+	fileMetadata.Lock()
+	defer fileMetadata.Unlock()
+	if int(args.Index) == len(fileMetadata.chunkHandles) {
+		addrs, e := m.chooseServers(gfs.DefaultNumReplicas)
+		if e != nil {
+			return e
+		}
+
+		reply.Handle, addrs, err = m.CreateChunk(fileMetadata, addrs)
+		if err != nil {
+			// TODO: solve some create chunks successfully while some fail
+			return fmt.Errorf("create chunk for path %s failed", args.Path)
+		}
+
+	} else {
+		if args.Index < 0 || int(args.Index) >= len(fileMetadata.chunkHandles) {
+			return fmt.Errorf("invalid index for %s[%d]", args.Path, args.Index)
+		}
+		reply.Handle = fileMetadata.chunkHandles[args.Index]
+	}
 	return nil
 }
+
+// ChooseServers returns servers to store new chunk
+// called when a new chunk is create
+func (m *Master) chooseServers(num int) ([]string, error) {
+	if num > m.chunkServerInfos.Count() {
+		return nil, fmt.Errorf("no enough servers for %d replicas", num)
+	}
+
+	var ret []string
+	all := m.chunkServerInfos.Keys()
+	choose, err := gfs.Sample(len(all), num)
+	if err != nil {
+		return nil, err
+	}
+	for _, v := range choose {
+		ret = append(ret, all[v])
+	}
+
+	return ret, nil
+}
+
+// CreateChunk creates a new chunk for path. servers for the chunk are denoted by addrs
+// returns the handle of the new chunk, and the servers that create the chunk successfully
+func (m *Master) CreateChunk(fileMetadata *FileMetadata, addrs []string) (int64, []string, error) {
+	m.nhLock.Lock()
+	handle := m.nextHandle
+	m.nextHandle++
+	m.nhLock.Unlock()
+	// update file info
+	fileMetadata.chunkHandles = append(fileMetadata.chunkHandles, handle)
+	chunkMetadata := new(ChunkMetadata)
+	chunkMetadata.Lock()
+	defer chunkMetadata.Unlock()
+	chunkMetadata.version = 0
+	chunkMetadata.refcnt = 1
+	// TODO: chunk metadata checksum
+	chunkMetadata.checksum = 0
+	m.chunkNamespace.Set(fmt.Sprintf("%d", handle), chunkMetadata)
+
+	var errList string
+	var success []string
+	for _, v := range addrs {
+		var r gfs.CreateChunkReply
+
+		err := gfs.Call(v, "ChunkServer.RPCCreateChunk", gfs.CreateChunkArg{handle}, &r)
+		if err == nil {
+			chunkMetadata.location = append(chunkMetadata.location, v)
+			success = append(success, v)
+			chunkServerInfoFound, infoOk := m.chunkServerInfos.Get(v)
+			if infoOk {
+				chunkServerInfo := chunkServerInfoFound.(*ChunkServerInfo)
+				chunkServerInfo.Lock()
+				chunkServerInfo.chunks[handle] = true
+				chunkServerInfo.Unlock()
+			}
+		} else {
+			errList += err.Error() + ";"
+		}
+	}
+
+	if errList == "" {
+		return handle, success, nil
+	} else {
+		// replicas are no enough, add to need list
+		m.rnlLock.Lock()
+		m.replicasNeedList = append(m.replicasNeedList, handle)
+		m.rnlLock.Unlock()
+		return handle, success, fmt.Errorf(errList)
+	}
+}
+
 
 // RPCCreateFile is called by client to create a new file
 func (m *Master) RPCCreateFile(args gfs.CreateFileArg, reply *gfs.CreateFileReply) error {
@@ -162,7 +420,7 @@ func (m *Master) RPCDeleteFile(args gfs.DeleteFileArg, reply *gfs.DeleteFileRepl
 
 	fileMetadataFound, exist := m.fileNamespace.Get(args.Path)
 	if !exist {
-		return fmt.Errorf("path %s is not exsited", args.Path)
+		return fmt.Errorf("path %s does not exsit", args.Path)
 	}
 	var fileMetadata = fileMetadataFound.(*FileMetadata)
 	fileMetadata.RLock()
