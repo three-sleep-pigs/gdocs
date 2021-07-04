@@ -1,14 +1,15 @@
 package gfs
 
-type rpcChunkMetadata struct {
-	chunkHandle 	int64
-
-	version 	int64
-	checksum	int64
-}
+import (
+	"time"
+)
 
 // system config
 const (
 	// master
 	DeletedFilePrefix  = "__del__"
+	MinimumNumReplicas = 2
+	DefaultNumReplicas = 3
+	LeaseExpire = 1 * time.Minute
+
 )

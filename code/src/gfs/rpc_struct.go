@@ -2,6 +2,13 @@ package gfs
 
 import "time"
 
+type rpcChunkMetadata struct {
+	ChunkHandle 	int64
+
+	Version 	int64
+	Checksum	int64
+}
+
 // chunk server -----> master
 
 type HeartbeatArg struct {
@@ -21,6 +28,22 @@ type ReportSelfArg struct {
 
 type ReportSelfReply struct {
 	Chunks []rpcChunkMetadata
+}
+
+type CheckVersionArg struct {
+	Handle  int64
+	Version int64
+}
+
+type CheckVersionReply struct {
+	Stale bool
+}
+
+type CreateChunkArg struct {
+	Handle int64
+}
+type CreateChunkReply struct {
+	ErrorCode int
 }
 
 // client -----> master chunk
