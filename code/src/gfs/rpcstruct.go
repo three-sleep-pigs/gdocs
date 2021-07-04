@@ -55,29 +55,29 @@ type GetChunkHandleReply struct {
 // client -----> master namespace
 
 type CreateFileArg struct {
-	path string
+	Path string
 }
 type CreateFileReply struct{
 
 }
 
 type DeleteFileArg struct {
-	path string
+	Path string
 }
 type DeleteFileReply struct{
 
 }
 
 type RenameFileArg struct {
-	source string
-	target string
+	Source string
+	Target string
 }
 type RenameFileReply struct{
 
 }
 
 type MkdirArg struct {
-	path string
+	Path string
 }
 type MkdirReply struct{
 

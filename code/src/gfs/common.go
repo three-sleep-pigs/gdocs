@@ -6,3 +6,9 @@ type rpcChunkMetadata struct {
 	version 	int64
 	checksum	int64
 }
+
+// system config
+const (
+	// master
+	DeletedFilePrefix  = "__del__"
+)
