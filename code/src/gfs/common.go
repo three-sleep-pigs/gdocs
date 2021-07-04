@@ -1,10 +1,10 @@
 package gfs
 
 type rpcChunkMetadata struct {
-	chunkHandle 	int64
+	ChunkHandle 	int64
 
-	version 	int64
-	checksum	int64
+	Version 	int64
+	Checksum	int64
 }
 
 // system config
