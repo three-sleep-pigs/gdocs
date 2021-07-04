@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+// TODO: log, checkpoint, recovery
+
 // Master struct
 type Master struct {
 	address    string // master server address
@@ -82,13 +84,89 @@ type ChunkServerInfo struct {
 
 // NewAndServe starts a master and returns the pointer to it.
 func NewAndServe(address string, serverRoot string) *Master {
-	// TODO: small
-	ret := &Master{address: address, nextHandle: 0}
+	m := &Master{
+		address: address, 
+		serverRoot: serverRoot, 
+		nextHandle: 0,
+		shutdown: make(chan struct{}),
+		dead: false,
+	}
+
 	// initial 3 concurrent maps
-	ret.fileNamespace = cmap.New()
-	ret.chunkNamespace = cmap.New()
-	ret.chunkServerInfos = cmap.New()
-	return ret
+	m.fileNamespace = cmap.New()
+	m.chunkNamespace = cmap.New()
+	m.chunkServerInfos = cmap.New()
+	m.loadMeta()
+
+	// register rpc server
+	rpcs := rpc.NewServer()
+	rpcs.Register(m)
+	l, e := net.Listen("tcp", string(m.address))
+	if e != nil {
+		// TODO: handle error
+		return nil
+	}
+	m.l = l
+
+	// TODO: merge 2 go func and add shutdown function
+	
+	// handle rpc
+	go func() {
+		for {
+			select {
+			case <-m.shutdown:
+				return
+			default:
+			}
+			conn, err := m.l.Accept()
+			if err == nil {
+				go func() {
+					rpcs.ServeConn(conn)
+					conn.Close()
+				}()
+			} else {
+				if !m.dead {
+					// TODO: handle error
+				}
+			}
+		}
+	}()
+
+	// handle timed task
+	go func() {
+		serverCheckTicker := time.Tick(gfs.ServerCheckInterval)
+		storeMetaTicker := time.Tick(gfs.StoreMetaInterval)
+		for {
+			var err error
+			select {
+			case <-m.shutdown:
+				return
+			case <-serverCheckTicker:
+				err = m.serverCheck()
+			case <-storeMetaTicker:
+				err = m.storeMeta()
+			}
+			if err != nil {
+				// TODO: handle error
+			}
+		}
+	}()
+
+	return m
+}
+
+// loadMeta loads metadata from disk
+func (m *Master) loadMeta() error {
+	return nil
+}
+
+// storeMeta stores metadata to disk
+func (m *Master) storeMeta() error {
+	return nil
+}
+
+// Shutdown shuts down master
+func (m *Master) Shutdown() error {
 }
 
 // serverCheck checks all chunkserver according to last heartbeat time
