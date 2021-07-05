@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
-	"gfs"
+
+	"../../gfs"
 )
 
 type downloadItem struct {
@@ -12,8 +13,8 @@ type downloadItem struct {
 	expire time.Time
 }
 
-type dataBuffer struct {
-	lock sync.RWMutex
+type downloadBuffer struct {
+	sync.RWMutex
 	buffer map[gfs.DataBufferID]downloadItem
 	expire time.Duration
 	tick   time.Duration
@@ -48,7 +49,7 @@ func newDataBuffer(expire, tick time.Duration) *downloadBuffer {
 }
 
 // allocate a new DataID for given handle
-func NewDataID(handle gfs.ChunkHandle) gfs.DataBufferID {
+func NewDataID(handle int64) gfs.DataBufferID {
 	now := time.Now()
 	timeStamp := now.Nanosecond() + now.Second()*1000 + now.Minute()*60*1000
 	return gfs.DataBufferID{handle, timeStamp}

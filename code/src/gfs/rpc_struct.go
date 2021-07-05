@@ -3,24 +3,24 @@ package gfs
 import "time"
 
 type rpcChunkMetadata struct {
-	ChunkHandle 	int64
+	ChunkHandle int64
 
-	Version 	int64
-	Checksum	int64
+	Version  int64
+	Checksum int64
 }
 
 // chunk server -----> master
 
 type HeartbeatArg struct {
-	Address          string // chunk server address
-	ToExtendLeases  []int64 // leases to be extended
+	Address        string  // chunk server address
+	ToExtendLeases []int64 // leases to be extended
 	ToRemoveChunks []int64 // chunks to be removed
 }
 
 type HeartbeatReply struct {
-	Garbage []int64
+	Garbage        []int64
 	InvalidHandles []int64
-	NotPrimary []int64
+	NotPrimary     []int64
 }
 
 // master -----> chunk server
@@ -64,7 +64,7 @@ type GetReplicasArg struct {
 	Handle int64
 }
 type GetReplicasReply struct {
-	Primary     string
+	Primary string
 	// end time of lease
 	Expire      time.Time
 	Secondaries []string
@@ -74,8 +74,8 @@ type GetFileInfoArg struct {
 	Path string
 }
 type GetFileInfoReply struct {
-	IsDir  bool
-	Size int64
+	IsDir    bool
+	Size     int64
 	ChunkNum int64
 }
 
@@ -92,36 +92,32 @@ type GetChunkHandleReply struct {
 type CreateFileArg struct {
 	Path string
 }
-type CreateFileReply struct{
-
+type CreateFileReply struct {
 }
 
 type DeleteFileArg struct {
 	Path string
 }
-type DeleteFileReply struct{
-
+type DeleteFileReply struct {
 }
 
 type RenameFileArg struct {
 	Source string
 	Target string
 }
-type RenameFileReply struct{
-
+type RenameFileReply struct {
 }
 
 type MkdirArg struct {
 	Path string
 }
-type MkdirReply struct{
-
+type MkdirReply struct {
 }
 
 // client -----> chunk server
 type WriteChunkArg struct {
-	dbID DataBufferID
-	offset int64
+	DbID        DataBufferID
+	Offset      int64
 	Secondaries []string
 }
 
@@ -129,20 +125,28 @@ type WriteChunkReply struct {
 }
 
 type AppendChunkArg struct {
-	dbID DataBufferID
+	DbID        DataBufferID
 	Secondaries []string
 }
 
 type AppendChunkReply struct {
-	offset int64
+	Offset    int64
 	ErrorCode int
 }
 
 type ApplyMutationArg struct {
-	dbID DataBufferID
-	offset int64
-
+	DbID   DataBufferID
+	Offset int64
 }
 
 type ApplyMutationReply struct {
+}
+
+type ApplyCopyArg struct {
+	Handle  int64
+	Version int64
+	Data    []byte
+}
+
+type ApplyCopyReply struct {
 }

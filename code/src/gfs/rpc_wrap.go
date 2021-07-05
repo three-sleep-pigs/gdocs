@@ -1,6 +1,9 @@
 package gfs
 
-import "net/rpc"
+import (
+	"fmt"
+	"net/rpc"
+)
 
 // Call is RPC call helper
 func Call(srv string, rpcname string, args interface{}, reply interface{}) error {
@@ -12,4 +15,28 @@ func Call(srv string, rpcname string, args interface{}, reply interface{}) error
 
 	err := c.Call(rpcname, args, reply)
 	return err
+}
+
+// CallAll applies the rpc call to all destinations.
+func CallAll(dst []string, rpcname string, args interface{}) error {
+	ch := make(chan error)
+	for _, d := range dst {
+		go func(addr string) {
+			ch <- Call(addr, rpcname, args, nil)
+		}(d)
+	}
+	errList := ""
+	ok := true
+	for _ = range dst {
+		if err := <-ch; err != nil {
+			ok = false
+			errList += err.Error() + ";"
+		}
+	}
+
+	if ok {
+		return nil
+	} else {
+		return fmt.Errorf(errList)
+	}
 }
