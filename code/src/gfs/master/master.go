@@ -9,6 +9,7 @@ import (
 	"net/rpc"
 	"os"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,6 +17,7 @@ import (
 )
 
 // TODO: log, checkpoint, recovery
+// TODO: lazy delete
 
 // Master struct
 type Master struct {
@@ -264,22 +266,188 @@ func (m *Master) Shutdown() error {
 		err := m.storeMeta()
 		return err
 	}
-	
+	// TODO: should store again?
 	return nil
 }
 
-// serverCheck checks all chunkserver according to last heartbeat time
-// then removes all the information of the disconnnected servers
+//TODO: check consistency of file meta and chunk meta
+//TODO: check consistency of chunkserverinfo and location in chunkmeta
+
+// serverCheck checks chunkserver and removes chunkinfo of disconnnected servers
 func (m *Master) serverCheck() error {
-	// TODO: small
+	// detect dead servers
+	var deadServer []string
+	now := time.Now()
+	for tuple := range m.chunkServerInfos.IterBuffered() {
+		cs := tuple.Val.(*ChunkServerInfo)
+		cs.RLock()
+		if cs.lastHeartbeat.Add(gfs.ServerTimeout).Before(now) {
+			deadServer = append(deadServer, tuple.Key)
+		}
+		cs.RUnlock()
+	}
+
+	// remove dead servers
+	for _, addr := range deadServer {
+		chunkServerInfoFound, ok:= m.chunkServerInfos.Get(addr)
+		if !ok {
+			continue
+		}
+		chunkServerInfo := chunkServerInfoFound.(*ChunkServerInfo)
+		var handles []int64
+		chunkServerInfo.RLock()
+		for h, v := range chunkServerInfo.chunks {
+			if v {
+				handles = append(handles, h)
+			}
+		}
+		chunkServerInfo.RUnlock()
+		m.chunkServerInfos.Remove(addr)
+
+		// remove dead server from chunk meta and detect chunk need replica
+		for _, h := range handles {
+			chunkMetadataFound, ok := m.chunkNamespace.Get(fmt.Sprintf("%d", h))
+			if !ok {
+				continue
+			}
+			chunkMetadata := chunkMetadataFound.(*ChunkMetadata)
+
+			var newLocation []string
+			chunkMetadata.Lock()
+			for _, l := range chunkMetadata.location {
+				if l != addr {
+					newLocation = append(newLocation, l)
+				}
+			}
+			chunkMetadata.location = newLocation
+			chunkMetadata.expire = time.Now()
+			replicaNum := len(chunkMetadata.location)
+			chunkMetadata.Unlock()
+
+			if replicaNum < gfs.MinimumNumReplicas {
+				m.rnlLock.Lock()
+				m.replicasNeedList = append(m.replicasNeedList, h)
+				m.rnlLock.Unlock()
+				if replicaNum == 0 {
+					// TODO: handle error
+				}
+			}
+		}
+	}
+
+	// add replicas
+	err := m.reReplicationAll()
+	return err
+}
+
+// reReplicationAll adds replicas for all chunks to be replicated
+func (m *Master) reReplicationAll() error {
+	// clear satisfied chunk
+	m.rnlLock.Lock()
+	var newNeedList []int
+	for _, h := range m.replicasNeedList {
+		chunkMetadataFound, ok := m.chunkNamespace.Get(fmt.Sprintf("%d", h))
+		if !ok {
+			continue
+		}
+		chunkMetadata := chunkMetadataFound.(*ChunkMetadata)
+		if len(chunkMetadata.location) < gfs.MinimumNumReplicas {
+			newNeedList = append(newNeedList, int(h))
+		}
+	}
+
+	// make unique
+	sort.Ints(newNeedList)
+	m.replicasNeedList = make([]int64, 0)
+	for i, h := range newNeedList {
+		if i == 0 || h != newNeedList[i-1] {
+			m.replicasNeedList = append(m.replicasNeedList, int64(h))
+		}
+	}
+	needList := m.replicasNeedList
+	m.rnlLock.Unlock()
+
+	for _, h := range needList {
+		chunkMetadataFound, ok := m.chunkNamespace.Get(fmt.Sprintf("%d", h))
+		if !ok {
+			continue
+		}
+		chunkMetadata := chunkMetadataFound.(*ChunkMetadata)
+
+		// lock chunk so master will not grant lease during copy time
+		chunkMetadata.Lock()
+		if chunkMetadata.expire.Before(time.Now()) {
+			m.reReplicationOne(h)
+			// TODO: handle error
+		}
+		chunkMetadata.Unlock()
+	}
+
 	return nil
 }
 
-// reReplication performs re-replication, ck should be locked in top caller
-// new lease will not be granted during copy
-func (m *Master) reReplication(handle int64) error {
-	// TODO: small
+// reReplicationOne adds replica for one chunk, chunk meta should be locked in top caller
+func (m *Master) reReplicationOne(handle int64) error {
+	from, to, err := m.chooseReReplication(handle)
+	if err != nil {
+		return err
+	}
+
+	// TODO: check code in chunk server, to may have handle, from may not, version checksum in from and to may be wrong, etc
+	var cr gfs.CreateChunkReply
+	err = gfs.Call(to, "ChunkServer.RPCCreateChunk", gfs.CreateChunkArg{Handle: handle}, &cr)
+	if err != nil {
+		return err
+	}
+
+	var sr gfs.SendCopyReply
+	err = gfs.Call(from, "ChunkServer.RPCSendCopy", gfs.SendCopyArg{Handle: handle, Address: to}, &sr)
+	if err != nil {
+		return err
+	}
+
+	// TODO: check dead lock for cs and cm lock
+	// add handle in chunk server info of to
+	chunkServerInfoFound, ok := m.chunkServerInfos.Get(to)
+	if !ok {
+		return fmt.Errorf("add chunk in removed server %s", to)
+	}
+	chunkServerInfo := chunkServerInfoFound.(*ChunkServerInfo)
+	chunkServerInfo.Lock()
+	chunkServerInfo.chunks[handle] = true
+	chunkServerInfo.Unlock()
+
+	// add to in location of handle
+	chunkMetadataFound, ok := m.chunkNamespace.Get(fmt.Sprintf("%d", handle))
+	if !ok {
+		return fmt.Errorf("cannot find chunk %v", handle)
+	}
+	chunkMetadata := chunkMetadataFound.(*ChunkMetadata)
+	chunkMetadata.location = append(chunkMetadata.location, to)
 	return nil
+}
+
+// TODO: check dead lock for cs and cm lock, improve selection strategy
+// chooseReReplication chooses from chunk server and to chunk server for chunk to be replicated
+func (m *Master) chooseReReplication(handle int64) (from, to string, err error) {
+	from = ""
+	to = ""
+	err = nil
+	for tuple := range m.chunkServerInfos.IterBuffered() {
+		cs := tuple.Val.(*ChunkServerInfo)
+		cs.RLock() // can be deleted
+		if cs.chunks[handle] {
+			from = tuple.Key
+		} else {
+			to = tuple.Key
+		}
+		cs.RUnlock()
+		if from != "" && to != "" {
+			return
+		}
+	}
+	err = fmt.Errorf("No enough server for replica %v", handle)
+	return
 }
 
 // RPCHeartbeat is called by chunkserver to let the master know that a chunkserver is alive
