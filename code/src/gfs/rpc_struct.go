@@ -44,7 +44,17 @@ type CheckVersionReply struct {
 type CreateChunkArg struct {
 	Handle int64
 }
+
 type CreateChunkReply struct {
+	ErrorCode int
+}
+
+type SendCopyArg struct {
+	Handle  int64
+	Address string
+}
+
+type SendCopyReply struct {
 	ErrorCode int
 }
 
