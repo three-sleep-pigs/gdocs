@@ -125,6 +125,7 @@ type AppendChunkArg struct {
 
 type AppendChunkReply struct {
 	offset int64
+	ErrorCode int
 }
 
 type ApplyMutationArg struct {
