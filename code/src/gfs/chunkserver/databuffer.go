@@ -12,9 +12,9 @@ type downloadItem struct {
 	expire time.Time
 }
 
-type dataBuffer struct {
-	lock sync.RWMutex
-	buffer map[gfs.DataBufferID]downloadItem
+type downloadBuffer struct {
+	sync.RWMutex
+	buffer map[int64]downloadItem
 	expire time.Duration
 	tick   time.Duration
 }

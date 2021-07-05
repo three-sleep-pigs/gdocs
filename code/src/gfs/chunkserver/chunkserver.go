@@ -14,7 +14,7 @@ type ChunkServer struct {
 	rootDir string
 	chunk map[int64]*ChunkInfo
 
-	db *dataBuffer
+	db *downloadBuffer
 }
 
 type ChunkInfo struct {
@@ -36,7 +36,7 @@ func (cs *ChunkServer) write(id int64, data []byte, offset int64) error {
 	ck := cs.chunk[id]
 	cs.lock.RUnlock()
 
-	len := offset + len(data)
+	len := offset + int64(len(data))
 	if len > gfs.MaxChunkSize {
 		log.Fatal("Maximum chunksize exceeded!")
 	}
@@ -65,7 +65,7 @@ func (cs *ChunkServer) sync (id int64,m *Mutation) error {
 
 	if err != nil {
 		cs.lock.RLock()
-		ck := cs.chunk[handle]
+		ck := cs.chunk[id]
 		cs.lock.RUnlock()
 		ck.invalid = true
 		return err
@@ -81,7 +81,7 @@ func (cs *ChunkServer) RPCWriteChunk (args gfs.WriteChunkArg,reply *gfs.WriteCHu
 		return err
 	}
 
-	newLength := args.offset + len(data)
+	newLength := args.offset + int64(len(data))
 	if newLength > gfs.MaxChunkSize {
 		return fmt.Errorf("Maximum chunk size exceeded!")	
 	}
@@ -140,8 +140,8 @@ func (cs *ChunkServer) RPCAppendChunk(args gfs.AppendChunkArg, reply *gfs.Append
 	}
 
 	if err = func() error {
-		ck.Lock()
-		defer ck.Unlock()
+		ck.lock.Lock()
+		defer ck.lock.Unlock()
 		newLen := ck.length + gfs.Offset(len(data))
 		offset := ck.length
 		if newLen > gfs.MaxChunkSize {
@@ -185,8 +185,8 @@ func (cs *ChunkServer) RPCApplyCopy(args gfs.ApplyCopyArg, reply *gfs.ApplyCopyR
 		return fmt.Errorf("Chunk %v does not exist or is abandoned", handle)
 	}
 	
-	ck.Lock()
-	defer ck.Unlock()
+	ck.lock.Lock()
+	defer ck.lock.Unlock()
 
 	log.Infof("Server %v : Apply copy of %v", cs.address, handle)
 
@@ -215,8 +215,8 @@ func (cs *ChunkServer) RPCApplyMutation(args gfs.ApplyMutationArg, reply *gfs.Ap
 
 	mutation := &Mutation{data, args.Offset}
 
-	ck.Lock()
-	defer ck.Unlock()
+	ck.lock.Lock()
+	defer ck.lock.Unlock()
 	err = cs.sync(handle, mutation)
 	return err
 }
