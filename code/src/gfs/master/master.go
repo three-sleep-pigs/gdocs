@@ -3,8 +3,13 @@ package master
 import (
 	"../../gfs"
 	"../cmap"
+	"encoding/gob"
 	"fmt"
 	"net"
+	"net/rpc"
+	"os"
+	"path"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -46,16 +51,6 @@ type FileMetadata struct {
 	chunkHandles	[]int64
 }
 
-type PersistentFileMetadata struct {
-	path 	string
-
-	isDir	bool
-
-	// if it is a file
-	size	int64
-	chunkHandles	[]int64
-}
-
 type ChunkMetadata struct {
 	sync.RWMutex
 
@@ -67,19 +62,36 @@ type ChunkMetadata struct {
 	refcnt	int64
 }
 
-type PersistentChunkMetadata struct {
-	chunkHandle 	int64
-
-	version 	int64
-	checksum	int64
-}
-
 type ChunkServerInfo struct {
 	sync.RWMutex
 
 	lastHeartbeat time.Time
 	chunks        map[int64]bool // set of chunks that the chunkserver has
 	garbage       []int64
+}
+
+type PersistentFileMetadata struct {
+	path 	string
+
+	isDir	bool
+
+	// if it is a file
+	size	int64
+	chunkHandles	[]int64
+}
+
+type PersistentChunkMetadata struct {
+	chunkHandle 	int64
+
+	version 	int64
+	checksum	int64
+	refcnt	int64
+}
+
+type PersistentMetadata struct {
+	nextHandle	int64
+	chunkMeta	[]PersistentChunkMetadata
+	fileMeta    []PersistentFileMetadata
 }
 
 // NewAndServe starts a master and returns the pointer to it.
@@ -157,16 +169,103 @@ func NewAndServe(address string, serverRoot string) *Master {
 
 // loadMeta loads metadata from disk
 func (m *Master) loadMeta() error {
+	filename := path.Join(m.serverRoot, gfs.MetaFileName)
+	file, err := os.OpenFile(filename, os.O_RDONLY, 0755)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	var meta PersistentMetadata
+	dec := gob.NewDecoder(file)
+	err = dec.Decode(&meta)
+	if err != nil {
+		return err
+	}
+
+	m.nextHandle = meta.nextHandle
+
+	for _, pf := range meta.fileMeta {
+		f := new(FileMetadata)
+		f.isDir = pf.isDir
+		f.size = pf.size
+		f.chunkHandles = pf.chunkHandles
+		// TODO: handle error
+		m.fileNamespace.SetIfAbsent(pf.path, f)
+	}
+
+	for _, pc := range meta.chunkMeta {
+		c := new(ChunkMetadata)
+		c.version = pc.version
+		c.checksum = pc.checksum
+		c.refcnt = pc.refcnt
+		// TODO: handle error
+		m.chunkNamespace.SetIfAbsent(fmt.Sprintf("%d", pc.chunkHandle), c)
+	}
+
 	return nil
 }
 
 // storeMeta stores metadata to disk
 func (m *Master) storeMeta() error {
-	return nil
+	filename := path.Join(m.serverRoot, gfs.MetaFileName)
+	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0755)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	var meta PersistentMetadata
+
+	for tuple := range m.fileNamespace.IterBuffered() {
+		f := tuple.Val.(*FileMetadata)
+		f.RLock()
+		meta.fileMeta = append(meta.fileMeta, PersistentFileMetadata{
+			path: tuple.Key,
+			isDir: f.isDir,
+			size: f.size,
+			chunkHandles: f.chunkHandles,
+		})
+		f.RUnlock()
+	}
+
+	for tuple := range m.chunkNamespace.IterBuffered() {
+		h, err := strconv.ParseInt(tuple.Key, 10, 64)
+		if err != nil {
+			// TODO: handle error
+			continue
+		}
+		c := tuple.Val.(*ChunkMetadata)
+		c.RLock()
+		meta.chunkMeta = append(meta.chunkMeta, PersistentChunkMetadata{
+			chunkHandle: h,
+			version: c.version,
+			checksum: c.checksum,
+			refcnt: c.refcnt,
+		})
+		c.RUnlock()
+	}
+
+	m.nhLock.Lock()
+	meta.nextHandle = m.nextHandle
+	m.nhLock.Unlock()
+
+	enc := gob.NewEncoder(file)
+	err = enc.Encode(meta)
+	return err
 }
 
 // Shutdown shuts down master
 func (m *Master) Shutdown() error {
+	if !m.dead {
+		m.dead = true
+		close(m.shutdown)
+		m.l.Close()
+		err := m.storeMeta()
+		return err
+	}
+	
+	return nil
 }
 
 // serverCheck checks all chunkserver according to last heartbeat time
