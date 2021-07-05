@@ -107,3 +107,31 @@ type MkdirArg struct {
 type MkdirReply struct{
 
 }
+
+// client -----> chunk server
+type WriteChunkArg struct {
+	dbID DataBufferID
+	offset int64
+	Secondaries []string
+}
+
+type WriteChunkReply struct {
+}
+
+type AppendChunkArg struct {
+	dbID DataBufferID
+	Secondaries []string
+}
+
+type AppendChunkReply struct {
+	offset int64
+}
+
+type ApplyMutationArg struct {
+	dbID DataBufferID
+	offset int64
+
+}
+
+type ApplyMutationReply struct {
+}
