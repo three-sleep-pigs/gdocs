@@ -13,39 +13,3 @@ func Sample(n, k int) ([]int, error) {
 	}
 	return rand.Perm(n)[:k], nil
 }
-
-// Call is RPC call helper
-func Call(srv string, rpcname string, args interface{}, reply interface{}) error {
-	client, errx := rpc.Dial("tcp", string(srv))
-	if errx != nil {
-		return errx
-	}
-	defer client.Close()
-
-	err := client.Call(rpcname, args, reply)
-	return err
-}
-
-// CallAll applies the rpc call to all destinations.
-func CallAll(dst []string, rpcname string, args interface{}) error {
-	ch := make(chan error)
-	for _, d := range dst {
-		go func(addr string) {
-			ch <- Call(addr, rpcname, args, nil)
-		}(d)
-	}
-	errList := ""
-	ok := true
-	for _ = range dst {
-		if err := <-ch; err != nil {
-			ok = false
-			errList += err.Error() + ";"
-		}
-	}
-
-	if ok {
-		return nil
-	} else {
-		return fmt.Errorf(errList)
-	}
-}
