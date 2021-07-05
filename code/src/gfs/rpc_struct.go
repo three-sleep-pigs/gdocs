@@ -19,6 +19,8 @@ type HeartbeatArg struct {
 
 type HeartbeatReply struct {
 	Garbage []int64
+	InvalidHandles []int64
+	NotPrimary []int64
 }
 
 // master -----> chunk server
