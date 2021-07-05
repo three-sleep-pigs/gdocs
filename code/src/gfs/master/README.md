@@ -47,5 +47,5 @@ type Master struct {
 + **RPCDeleteFile** is called by client to delete a file
 + **RPCRenameFile** is called by client to rename a file
 + **RPCMkdir** is called by client to make a new directory
-+ ##### BTW, all the file related operation will ask its parents' read lock and its write lock according to the paper
++ ##### BTW, all the file related operations will ask its parents' read lock and its write lock according to the paper
 ## Master other funcs
