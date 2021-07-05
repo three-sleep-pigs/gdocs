@@ -1,12 +1,12 @@
 package chunkserver
 
-import {
+import (
 	"fmt"
 	"sync"
 	"net"
 	"gfs"
 	"path"
-}
+)
 
 type ChunkServer struct {
 	lock sync.RWMutex
