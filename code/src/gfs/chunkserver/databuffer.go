@@ -1,11 +1,10 @@
 package chunkserver
 
 import (
+	"../../gfs"
 	"fmt"
 	"sync"
 	"time"
-
-	"../../gfs"
 )
 
 type downloadItem struct {
@@ -48,11 +47,11 @@ func newDataBuffer(expire, tick time.Duration) *downloadBuffer {
 	return buf
 }
 
-// allocate a new DataID for given handle
+// NewDataID allocate a new DataID for given handle
 func NewDataID(handle int64) gfs.DataBufferID {
 	now := time.Now()
 	timeStamp := now.Nanosecond() + now.Second()*1000 + now.Minute()*60*1000
-	return gfs.DataBufferID{handle, timeStamp}
+	return gfs.DataBufferID{Handle: handle, Time: timeStamp}
 }
 
 func (buf *downloadBuffer) Set(id gfs.DataBufferID, data []byte) {

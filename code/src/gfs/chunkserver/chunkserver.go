@@ -1,40 +1,44 @@
 package chunkserver
 
 import (
+	"../../gfs"
+	"encoding/gob"
 	"fmt"
+	"io"
 	"log"
+	"net"
+	"net/rpc"
 	"os"
 	"path"
 	"sync"
-	"net"
-	"net/rpc"
-	"encoding/gob"
 	"time"
-	"io"
-	"../../gfs"
 )
+
 type void struct {}
+
+// ChunkServer struct
 type ChunkServer struct {
-	lock 		sync.RWMutex
-	id			string
-	master 		string
-	rootDir 	string
-	l			net.Listener
-	shutdown	chan struct {}
-	chunk 		map[int64]*ChunkInfo
-	dead 		bool
-	garbage 	[]int64
-	leaseset    map[int64]void
-	db 			*downloadBuffer
+	lock     sync.RWMutex
+	id       string		// chunk server id
+	master   string		// master address
+	rootDir  string		// path to data storage
+	l        net.Listener
+	shutdown chan struct {}
+
+	chunk    map[int64]*ChunkInfo	// chunk information
+	dead     bool	// set to true if server is shutdown
+	garbage  []int64	// garbage
+	leaseSet map[int64]void		// leases to be extended? I guess...
+	db       *downloadBuffer	// expiring download buffer??? fine I have no idea about it...
 }
 
 type ChunkInfo struct {
 	lock      sync.RWMutex
 	length    int64
-	version   int64
-	checksum  map[int64]int64
-	mutations map[int64]*Mutation
-	invalid   bool
+	version   int64		// version number of the chunk in disk
+	checksum  map[int64]int64	// why it is a map?
+	mutations map[int64]*Mutation	// mutation buffer
+	invalid   bool		// unrecoverable error
 }
 
 type Mutation struct {
@@ -43,21 +47,21 @@ type Mutation struct {
 }
 
 type metadata struct{
-	chunkhandle	int64
-	length		int64
-	version		int64
-	checksum	int64
+	chunkHandle int64
+	length      int64
+	version     int64
+	checksum    int64
 }
 
 func newChunkserver(id string, master string, rootDir string) *ChunkServer{
-	cs:=&ChunkServer{
-		id:id,
-		shutdown:make(chan struct{}),
-		master:master,
-		rootDir:rootDir,
-		chunk:make(map[int64]*ChunkInfo),
-		leaseset:make(map[int64]void),
-		db:newDataBuffer(time.Minute, 30*time.Second),
+	cs := &ChunkServer{
+		id:       id,
+		shutdown: make(chan struct{}),
+		master:   master,
+		rootDir:  rootDir,
+		chunk:    make(map[int64]*ChunkInfo),
+		leaseSet: make(map[int64]void),
+		db:       newDataBuffer(time.Minute, 30*time.Second),
 	}
 	rpcs:=rpc.NewServer()
 	rpcs.Register(cs)
@@ -162,7 +166,7 @@ func(cs *ChunkServer)loadmeta() error{
 		fmt.Println("[chunkserver]decode file error:",err)
 	}
 	for _,chunkmeta:=range metadatas{
-		cs.chunk[chunkmeta.chunkhandle]=&ChunkInfo{
+		cs.chunk[chunkmeta.chunkHandle]=&ChunkInfo{
 			length:chunkmeta.length,
 			version:chunkmeta.version,
 		}
@@ -182,9 +186,9 @@ func (cs*ChunkServer) storemeta()error{
 	var metadatas []metadata
 	for handle,chunk:=range cs.chunk{
 		metadatas=append(metadatas,metadata{
-			chunkhandle:handle,
-			length:chunk.length,
-			version:chunk.version,
+			chunkHandle: handle,
+			length:      chunk.length,
+			version:     chunk.version,
 		})
 	}
 	enc:=gob.NewEncoder(file)
@@ -202,29 +206,22 @@ func (cs*ChunkServer) garbagecollection()error{
 	cs.garbage=make([]int64,0)
 	return nil
 }
-
-func (cs*ChunkServer) heartbeat()error{
-	le:=make([]int64,len(cs.leaseset))
-	for v:=range cs.leaseset{
-		le=append(le,v)
+// heartbeat calls master regularly to report chunk server's status
+func (cs*ChunkServer) heartbeat() error {
+	le := make([]int64, len(cs.leaseSet))
+	for v := range cs.leaseSet {
+		le = append(le,v)
 	}
-	args:=&gfs.HeartbeatArg{
-		Address:cs.id,
-		ToExtendLeases:le,
+	args := &gfs.HeartbeatArg{
+		Address:	cs.id,
+		ToExtendLeases:	le,
 	}
 	var reply gfs.HeartbeatReply
-	rpcc,err:=rpc.Dial("tcp",cs.master)
-	if err!=nil{
-		fmt.Println("[chunkserver]heartbeat rpc call error:",err)
+	err := gfs.Call(cs.master, "Master.RPCHeartbeat", args, &reply)
+	if err != nil {
 		return err
 	}
-	err=rpcc.Call("Master.RPCHeartbeat",args,&reply)
-	if err!=nil{
-		fmt.Println("[chunkserver]heartbeat rpc call error:",err)
-		return err
-	}
-	rpcc.Close()
-	cs.garbage=append(cs.garbage,reply.Garbage...)
+	cs.garbage = append(cs.garbage, reply.Garbage...)
 	return nil
 }
 
@@ -359,11 +356,11 @@ func (cs *ChunkServer) readChunk(handle int64, offset int64, data []byte, length
 	filename:=path.Join(cs.rootDir,fmt.Sprintf("chunk%v.chk",handle))
 	file,err:=os.Open(filename)
 	if err!=nil {
-		*length=-1;
+		*length = -1
 		return err
 	}
 	defer file.Close()
-	*length,err=file.ReadAt(data,offset)
+	*length,err = file.ReadAt(data,offset)
 	return err
 }
 
