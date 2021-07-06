@@ -150,3 +150,22 @@ type ApplyCopyArg struct {
 
 type ApplyCopyReply struct {
 }
+
+type ForwardDataArg struct {
+	DataID     DataBufferID
+	Data       []byte
+	ChainOrder []string
+}
+type ForwardDataReply struct {
+	ErrorCode int
+}
+type ReadChunkArg struct {
+	Handle int64
+	Offset int64
+	Length int
+}
+type ReadChunkReply struct {
+	Data      []byte
+	Length    int
+	ErrorCode int
+}
