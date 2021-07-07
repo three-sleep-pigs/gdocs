@@ -1,8 +1,6 @@
 package master
 
 import (
-	"../../gfs"
-	"../cmap"
 	"encoding/gob"
 	"fmt"
 	"net"
@@ -14,6 +12,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"../../gfs"
+	"../cmap"
 )
 
 // TODO: log, checkpoint, recovery
@@ -26,42 +27,42 @@ type Master struct {
 	l          net.Listener
 	shutdown   chan struct{}
 	dead       bool // set to ture if server is shutdown
-	nhLock 		sync.Mutex
-	nextHandle	int64
+	nhLock     sync.Mutex
+	nextHandle int64
 
 	// all keys from the following 3 maps are string
 	// initialization in new and serve
 	// from full path to file metadata
-	fileNamespace  cmap.ConcurrentMap
+	fileNamespace cmap.ConcurrentMap
 	// from chunk handle to chunk metadata
 	chunkNamespace cmap.ConcurrentMap
 	// from chunk server address to chunk server info
-	chunkServerInfos	cmap.ConcurrentMap
+	chunkServerInfos cmap.ConcurrentMap
 
 	// list of chunk handles need a new replicas
-	rnlLock 	sync.RWMutex
+	rnlLock          sync.RWMutex
 	replicasNeedList []int64
 }
 
 type FileMetadata struct {
 	sync.RWMutex
 
-	isDir	bool
+	isDir bool
 
 	// if it is a file
-	size	int64
-	chunkHandles	[]int64
+	size         int64
+	chunkHandles []int64
 }
 
 type ChunkMetadata struct {
 	sync.RWMutex
 
-	location []string	// set of replica locations
-	primary  string	// primary chunkserver
-	expire   time.Time	// lease expire time
+	location []string  // set of replica locations
+	primary  string    // primary chunkserver
+	expire   time.Time // lease expire time
 	version  int64
 	checksum int64
-	refcnt	int64
+	refcnt   int64
 }
 
 type ChunkServerInfo struct {
@@ -73,37 +74,37 @@ type ChunkServerInfo struct {
 }
 
 type PersistentFileMetadata struct {
-	path 	string
+	path string
 
-	isDir	bool
+	isDir bool
 
 	// if it is a file
-	size	int64
-	chunkHandles	[]int64
+	size         int64
+	chunkHandles []int64
 }
 
 type PersistentChunkMetadata struct {
-	chunkHandle 	int64
+	chunkHandle int64
 
-	version 	int64
-	checksum	int64
-	refcnt	int64
+	version  int64
+	checksum int64
+	refcnt   int64
 }
 
 type PersistentMetadata struct {
-	nextHandle	int64
-	chunkMeta	[]PersistentChunkMetadata
-	fileMeta    []PersistentFileMetadata
+	nextHandle int64
+	chunkMeta  []PersistentChunkMetadata
+	fileMeta   []PersistentFileMetadata
 }
 
 // NewAndServe starts a master and returns the pointer to it.
 func NewAndServe(address string, serverRoot string) *Master {
 	m := &Master{
-		address: address, 
-		serverRoot: serverRoot, 
+		address:    address,
+		serverRoot: serverRoot,
 		nextHandle: 0,
-		shutdown: make(chan struct{}),
-		dead: false,
+		shutdown:   make(chan struct{}),
+		dead:       false,
 	}
 
 	// initial 3 concurrent maps
@@ -124,7 +125,7 @@ func NewAndServe(address string, serverRoot string) *Master {
 
 	// TODO: merge 2 go func and add shutdown function
 	// xjq: I don't think merging 2 go func will be better...
-	
+
 	// handle rpc
 	go func() {
 		for {
@@ -232,9 +233,9 @@ func (m *Master) storeMeta() error {
 		f := tuple.Val.(*FileMetadata)
 		f.RLock()
 		meta.fileMeta = append(meta.fileMeta, PersistentFileMetadata{
-			path: tuple.Key,
-			isDir: f.isDir,
-			size: f.size,
+			path:         tuple.Key,
+			isDir:        f.isDir,
+			size:         f.size,
 			chunkHandles: f.chunkHandles,
 		})
 		f.RUnlock()
@@ -256,9 +257,9 @@ func (m *Master) storeMeta() error {
 		c.RLock()
 		meta.chunkMeta = append(meta.chunkMeta, PersistentChunkMetadata{
 			chunkHandle: h,
-			version: c.version,
-			checksum: c.checksum,
-			refcnt: c.refcnt,
+			version:     c.version,
+			checksum:    c.checksum,
+			refcnt:      c.refcnt,
 		})
 		c.RUnlock()
 	}
@@ -314,7 +315,7 @@ func (m *Master) serverCheck() error {
 
 	// remove dead servers
 	for _, addr := range deadServer {
-		chunkServerInfoFound, ok:= m.chunkServerInfos.Get(addr)
+		chunkServerInfoFound, ok := m.chunkServerInfos.Get(addr)
 		if !ok {
 			continue
 		}
@@ -500,7 +501,7 @@ func (m *Master) RPCHeartbeat(args gfs.HeartbeatArg, reply *gfs.HeartbeatReply) 
 		// server exist
 		isFirst = false
 		// no method to delete chunk server info so can not check ok
-		chunkServerInfoFound, _:= m.chunkServerInfos.Get(args.Address)
+		chunkServerInfoFound, _ := m.chunkServerInfos.Get(args.Address)
 		chunkServerInfoOld := chunkServerInfoFound.(*ChunkServerInfo)
 		chunkServerInfoOld.Lock()
 		defer chunkServerInfoOld.Unlock()
@@ -550,7 +551,7 @@ func (m *Master) RPCHeartbeat(args gfs.HeartbeatArg, reply *gfs.HeartbeatReply) 
 		var notPrimary []int64 = make([]int64, 0)
 		for _, handle := range args.ToExtendLeases {
 			// extend lease
-			chunkMetadataFound, exist:= m.chunkNamespace.Get(fmt.Sprintf("%d", handle))
+			chunkMetadataFound, exist := m.chunkNamespace.Get(fmt.Sprintf("%d", handle))
 			if !exist {
 				// append to slice and reply to chunk server
 				invalidHandle = append(invalidHandle, handle)
@@ -803,7 +804,6 @@ func (m *Master) CreateChunk(fileMetadata *FileMetadata, addrs []string) (int64,
 	}
 }
 
-
 // RPCCreateFile is called by client to create a new file
 func (m *Master) RPCCreateFile(args gfs.CreateFileArg, reply *gfs.CreateFileReply) error {
 	parents := getParents(args.Path)
@@ -846,7 +846,7 @@ func (m *Master) RPCDeleteFile(args gfs.DeleteFileArg, reply *gfs.DeleteFileRepl
 	m.fileNamespace.Remove(args.Path)
 	// lazy delete
 	// may fail
-	m.fileNamespace.SetIfAbsent(gfs.DeletedFilePrefix + args.Path, fileMetadata)
+	m.fileNamespace.SetIfAbsent(gfs.DeletedFilePrefix+args.Path, fileMetadata)
 	return nil
 }
 
@@ -917,7 +917,7 @@ func getParents(path string) []string {
 }
 
 // acquire parents read lock
-func (m *Master) acquireParentsRLocks(parents []string) (bool, []*FileMetadata, error)  {
+func (m *Master) acquireParentsRLocks(parents []string) (bool, []*FileMetadata, error) {
 	var fileMetadatas []*FileMetadata
 	for _, value := range parents {
 		fileMetadataFound, ok := m.fileNamespace.Get(value)
