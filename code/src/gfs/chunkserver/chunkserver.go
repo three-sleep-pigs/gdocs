@@ -1,6 +1,7 @@
 package chunkserver
 
 import (
+	"../../gfs"
 	"encoding/gob"
 	"fmt"
 	"io"
@@ -11,15 +12,13 @@ import (
 	"path"
 	"sync"
 	"time"
-
-	"../../gfs"
 )
 
 type void struct{}
 
 // ChunkServer struct
 type ChunkServer struct {
-	lock     sync.RWMutex
+	lock     sync.RWMutex // protect not only chunk server info but chunk metadata
 	id       string // chunk server id
 	master   string // master address
 	rootDir  string // path to data storage
@@ -34,10 +33,10 @@ type ChunkServer struct {
 }
 
 type ChunkInfo struct {
-	lock      sync.RWMutex
+	lock      sync.RWMutex	// protect corresponding file read and write
 	length    int64
 	version   int64               // version number of the chunk in disk
-	checksum  int64               // why it is a map?
+	checksum  int64
 	mutations map[int64]*Mutation // mutation buffer
 	invalid   bool                // unrecoverable error
 }
@@ -68,6 +67,8 @@ func newChunkserver(id string, master string, rootDir string) *ChunkServer {
 	rpcs := rpc.NewServer()                  //create a server instance
 	rpcs.Register(cs)                        //register rpc service
 	l, e := net.Listen("tcp", string(cs.id)) //listen to 'cs.id' address
+	// TODO: handle errors in new Server
+	// all new server errs are just easily printed
 	if e != nil {
 		fmt.Println("[chunkserver]listen error:", e)
 	}
@@ -107,6 +108,7 @@ func newChunkserver(id string, master string, rootDir string) *ChunkServer {
 	}()
 	//background coroutine heartbreat,store metadata,collect garbage regularly
 	go func() {
+		// TODO: turn into common properties in common.go
 		heartbeat := time.Tick(100 * time.Millisecond)
 		storemeta := time.Tick(30 * time.Minute)
 		garbagecollection := time.Tick(2 * time.Hour)
@@ -118,6 +120,8 @@ func newChunkserver(id string, master string, rootDir string) *ChunkServer {
 				{
 					err := cs.heartbeat()
 					if err != nil {
+						// TODO: handle heartbeat err
+						// printing err will be wrong
 						fmt.Println("[chunkserver]heartbeat error:", err)
 					}
 				}
@@ -148,6 +152,8 @@ func (cs *ChunkServer) Shutdown() {
 		close(cs.shutdown) //close the channel
 		cs.l.Close()       //close the listener
 	}
+	// TODO: same quetion as master
+	// is there need to store data
 	err := cs.storemeta() //store chunk metadata into disk
 	if err != nil {
 		fmt.Println("[chunkserver]store metadata error:", err)
@@ -217,6 +223,7 @@ func (cs *ChunkServer) garbagecollection() error {
 
 // heartbeat calls master regularly to report chunk server's status
 func (cs *ChunkServer) heartbeat() error {
+	// TODO: add leases to extend
 	le := make([]int64, len(cs.leaseSet))
 	for v := range cs.leaseSet {
 		le = append(le, v)
@@ -228,6 +235,8 @@ func (cs *ChunkServer) heartbeat() error {
 	var reply gfs.HeartbeatReply
 	err := gfs.Call(cs.master, "Master.RPCHeartbeat", args, &reply)
 	if err != nil {
+		// TODO: handle err
+		// leases fail to be extended
 		return err
 	}
 	cs.garbage = append(cs.garbage, reply.Garbage...)
@@ -256,7 +265,7 @@ func (cs *ChunkServer) RPCCheckVersion(args gfs.CheckVersionArg, reply *gfs.Chec
 	}
 	chunk.lock.Lock()
 	defer chunk.lock.Unlock()
-	if chunk.version+1 == args.Version {
+	if chunk.version + 1 == args.Version {
 		chunk.version++
 		reply.Stale = false
 	} else {
@@ -277,6 +286,7 @@ func (cs *ChunkServer) RPCForwardData(args gfs.ForwardDataArg, reply *gfs.Forwar
 	if len(args.ChainOrder) > 0 {     //send data to next chunkserver(ChainOrder: a chain of chunkserver to send data to)
 		next := args.ChainOrder[0]
 		args.ChainOrder = args.ChainOrder[1:]
+		// FIXME: why don't use wrapped rpc call in rpc_wrap.go
 		rpcc, err := rpc.Dial("tcp", next)
 		if err != nil {
 			fmt.Println("[chunkserver]forwarddata rpc call error:", err)
@@ -430,6 +440,7 @@ func (cs *ChunkServer) sync(handle int64, ck *ChunkInfo, m *Mutation) error {
 
 }
 
+// FIXME: Is this func called by master?
 // rpc called by master
 // write the data at given offet of args to chunkhandle
 func (cs *ChunkServer) RPCWriteChunk(args gfs.WriteChunkArg, reply *gfs.WriteChunkReply) error {
@@ -482,6 +493,7 @@ func (cs *ChunkServer) RPCWriteChunk(args gfs.WriteChunkArg, reply *gfs.WriteChu
 	return nil
 }
 
+// FIXME: Is this func called by master?
 // rpc called by master
 // write the data of args at the end of chunkhandle
 func (cs *ChunkServer) RPCAppendChunk(args gfs.AppendChunkArg, reply *gfs.AppendChunkReply) error {
