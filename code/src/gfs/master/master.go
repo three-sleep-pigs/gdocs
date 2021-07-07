@@ -122,8 +122,6 @@ func NewAndServe(address string, serverRoot string) *Master {
 	}
 	m.l = l
 
-	// TODO: merge 2 go func and add shutdown function
-	// xjq: I don't think merging 2 go func will be better...
 	
 	// handle rpc
 	go func() {
@@ -141,9 +139,7 @@ func NewAndServe(address string, serverRoot string) *Master {
 				}()
 			} else {
 				if !m.dead {
-					// TODO: handle error
-					// xjq: master can do nothing about the connection err
-					// maybe just print a warning msg or log a record
+					// TODO: log error
 				}
 			}
 		}
@@ -164,7 +160,7 @@ func NewAndServe(address string, serverRoot string) *Master {
 				err = m.storeMeta()
 			}
 			if err != nil {
-				// TODO: handle error
+				// TODO: log error
 			}
 		}
 	}()
@@ -261,6 +257,7 @@ func (m *Master) storeMeta() error {
 }
 
 // Shutdown shuts down master
+// shouldn't be called concurrently
 func (m *Master) Shutdown() error {
 	if !m.dead {
 		m.dead = true
@@ -269,8 +266,7 @@ func (m *Master) Shutdown() error {
 		err := m.storeMeta()
 		return err
 	}
-	// TODO: should store again?
-	// xjq: no need to store again...(in my opinion
+	// FIXME: TOCTTOU of m.dead
 	return nil
 }
 
@@ -279,6 +275,11 @@ func (m *Master) Shutdown() error {
 
 // serverCheck checks chunkserver and removes chunkinfo of disconnnected servers
 func (m *Master) serverCheck() error {
+	// if master is dead, stop server check
+	if m.dead {
+		return nil
+	}
+
 	// detect dead servers
 	var deadServer []string
 	now := time.Now()
