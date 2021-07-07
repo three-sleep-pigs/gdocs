@@ -191,8 +191,11 @@ func (m *Master) loadMeta() error {
 		f.isDir = pf.isDir
 		f.size = pf.size
 		f.chunkHandles = pf.chunkHandles
-		// TODO: handle error
-		m.fileNamespace.SetIfAbsent(pf.path, f)
+		e := m.fileNamespace.SetIfAbsent(pf.path, f)
+		if !e {
+			// TODO: handle exist error
+			continue
+		}
 	}
 
 	for _, pc := range meta.chunkMeta {
@@ -200,8 +203,11 @@ func (m *Master) loadMeta() error {
 		c.version = pc.version
 		c.checksum = pc.checksum
 		c.refcnt = pc.refcnt
-		// TODO: handle error
-		m.chunkNamespace.SetIfAbsent(fmt.Sprintf("%d", pc.chunkHandle), c)
+		e := m.chunkNamespace.SetIfAbsent(fmt.Sprintf("%d", pc.chunkHandle), c)
+		if !e {
+			// TODO: handle exist error
+			continue
+		}
 	}
 
 	return nil
@@ -229,7 +235,13 @@ func (m *Master) storeMeta() error {
 		})
 		f.RUnlock()
 	}
-
+	// FIXME: There may be inconsistency between stored fileMetadata and stored chunkMetadata
+	// For example, we creat a new chunk for a file A after storing A's metadata
+	// then there will be a refcnt = 1 chunk stored in chunkMetadata however no stored fileMetadata records it
+	// Is there a need to record file full path in chunkMetadata, then at the load part we can detect and fix above question
+	// but this may invoke other inconsistency problems
+	// anyway, the key point here is that we should snapshot the whole system to make sure consistency
+	// to be discussed later...
 	for tuple := range m.chunkNamespace.IterBuffered() {
 		h, err := strconv.ParseInt(tuple.Key, 10, 64)
 		if err != nil {
@@ -246,7 +258,8 @@ func (m *Master) storeMeta() error {
 		})
 		c.RUnlock()
 	}
-
+	// FIXME: same problem
+	// but we can just easily think the new created chunk after storing chunkMetadata doesn't exist
 	m.nhLock.Lock()
 	meta.nextHandle = m.nextHandle
 	m.nhLock.Unlock()
@@ -261,6 +274,8 @@ func (m *Master) storeMeta() error {
 func (m *Master) Shutdown() error {
 	if !m.dead {
 		m.dead = true
+		// close will cause case <- shutdown part get value 0
+		// end the rpc goroutine and the server check, store goroutine
 		close(m.shutdown)
 		m.l.Close()
 		err := m.storeMeta()
@@ -424,6 +439,8 @@ func (m *Master) reReplicationOne(handle int64) error {
 		return fmt.Errorf("add chunk in removed server %s", to)
 	}
 	chunkServerInfo := chunkServerInfoFound.(*ChunkServerInfo)
+	// FIXME: deadlock will happen
+	// same problem as chooseReReplication part
 	chunkServerInfo.Lock()
 	chunkServerInfo.chunks[handle] = true
 	chunkServerInfo.Unlock()
@@ -446,6 +463,12 @@ func (m *Master) chooseReReplication(handle int64) (from, to string, err error) 
 	err = nil
 	for tuple := range m.chunkServerInfos.IterBuffered() {
 		cs := tuple.Val.(*ChunkServerInfo)
+		// FIXME: there will be a dead lock
+		// While holding chunkMetadata Lock, acquiring for all chunkServerInfo read lock is too dangerous
+		// heartbeat part will acquire chunkMetadata Lock while holding chunkServerInfo Lock
+		// For the first heartbeat, after adding to chunk server map, reReplica happens.
+		// if chunk server report itself holding the relative chunk handle, bang!!! dead lock
+		// for not first heartbeats, if the chunk handle needing to reReplica is in the leases to extend, dead lock will happen.
 		cs.RLock() // can be deleted
 		if cs.chunks[handle] {
 			from = tuple.Key
@@ -482,6 +505,8 @@ func (m *Master) RPCHeartbeat(args gfs.HeartbeatArg, reply *gfs.HeartbeatReply) 
 		chunkServerInfoOld := chunkServerInfoFound.(*ChunkServerInfo)
 		chunkServerInfoOld.Lock()
 		defer chunkServerInfoOld.Unlock()
+		// TODO: the entrance in map may be deleted, check it
+
 		// update time
 		chunkServerInfoOld.lastHeartbeat = time.Now()
 		// send garbage
@@ -510,6 +535,7 @@ func (m *Master) RPCHeartbeat(args gfs.HeartbeatArg, reply *gfs.HeartbeatReply) 
 			chunkMetadata.Lock()
 			if v.Checksum == chunkMetadata.checksum {
 				if v.Version == chunkMetadata.version {
+					// TODO: after adding address, the needed to reReplica slice may get changed
 					chunkMetadata.location = append(chunkMetadata.location, args.Address)
 				} else {
 					chunkServerInfo.garbage = append(chunkServerInfo.garbage, v.ChunkHandle)
