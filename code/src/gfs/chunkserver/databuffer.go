@@ -1,10 +1,11 @@
 package chunkserver
 
 import (
-	"../../gfs"
 	"fmt"
 	"sync"
 	"time"
+
+	"../../gfs"
 )
 
 type downloadItem struct {
