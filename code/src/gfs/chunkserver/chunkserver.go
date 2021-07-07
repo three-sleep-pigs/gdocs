@@ -53,6 +53,7 @@ type metadata struct{
 	checksum    int64
 }
 
+//create a new chunkserver, return a pointer to it
 func newChunkserver(id string, master string, rootDir string) *ChunkServer{
 	cs := &ChunkServer{
 		id:       id,
@@ -63,15 +64,15 @@ func newChunkserver(id string, master string, rootDir string) *ChunkServer{
 		leaseSet: make(map[int64]void),
 		db:       newDataBuffer(time.Minute, 30*time.Second),
 	}
-	rpcs:=rpc.NewServer()
-	rpcs.Register(cs)
-	l,e:=net.Listen("tcp",string(cs.id))
+	rpcs:=rpc.NewServer()//create a server instance
+	rpcs.Register(cs)//register rpc service
+	l,e:=net.Listen("tcp",string(cs.id))//listen to 'cs.id' address
 	if e!=nil {
 		fmt.Println("[chunkserver]listen error:",e)
 	}
 	cs.l=l
 
-	_,err:=os.Stat(rootDir)
+	_,err:=os.Stat(rootDir)//check whether rootDir exists, if not, mkdir it
 	if err!=nil {
 		err = os.Mkdir(rootDir,0644)
 		if err!=nil{
@@ -82,6 +83,7 @@ func newChunkserver(id string, master string, rootDir string) *ChunkServer{
 	if err!=nil{
 		fmt.Println("[chunkserver]loadmeta error:",err)
 	}
+	//background coroutine loops receiving rpc calls, return immediately when the chunkserver shutdown 
 	go func(){
 		for{
 			select{
@@ -102,6 +104,7 @@ func newChunkserver(id string, master string, rootDir string) *ChunkServer{
 			}
 		}
 	}()
+	//background coroutine heartbreat,store metadata,collect garbage regularly
 	go func(){
 		heartbeat:=time.Tick(100*time.Millisecond)
 		storemeta:=time.Tick(30*time.Minute)
@@ -136,24 +139,24 @@ func newChunkserver(id string, master string, rootDir string) *ChunkServer{
 	}()
 	return cs
 }
-
+//called when close the chunk
 func(cs* ChunkServer) Shutdown() {
 	if cs.dead==false {
 		cs.dead=true
-		close(cs.shutdown)
-		cs.l.Close()
+		close(cs.shutdown)//close the channel
+		cs.l.Close()//close the listener
 	}
-	err:=cs.storemeta()
+	err:=cs.storemeta()//store chunk metadata into disk
 	if err!=nil {
 		fmt.Println("[chunkserver]store metadata error:",err)
 	}
 }
-
+//load metadata of chunks from disk into chunk map, called by newChunkServer
 func(cs *ChunkServer)loadmeta() error{
 	cs.lock.Lock()
-	defer cs.lock.Unlock()//?
-	filename:=path.Join(cs.rootDir,"chunkserver.meta")//join pathnames together
-	file,err:=os.OpenFile(filename,os.O_RDONLY,0644)
+	defer cs.lock.Unlock()
+	filename:=path.Join(cs.rootDir,"chunkserver.meta")
+	file,err:=os.OpenFile(filename,os.O_RDONLY,0644)//open metadata file of this chunkserver
 	if err!=nil {
 		fmt.Println("[chunkserver]open file error:",err)
 		return err
@@ -161,7 +164,7 @@ func(cs *ChunkServer)loadmeta() error{
 	defer file.Close()
 	var metadatas []metadata
 	dc:=gob.NewDecoder(file)
-	err=dc.Decode(&metadatas)
+	err=dc.Decode(&metadatas)//decode metadatas from file into a slice
 	if err!=nil{
 		fmt.Println("[chunkserver]decode file error:",err)
 	}
@@ -173,7 +176,7 @@ func(cs *ChunkServer)loadmeta() error{
 	}
 	return nil
 }
-
+//store metadata of chunks into disk, called by shutdown()
 func (cs*ChunkServer) storemeta()error{
 	cs.lock.RLock()
 	defer cs.lock.RUnlock()
@@ -192,10 +195,11 @@ func (cs*ChunkServer) storemeta()error{
 		})
 	}
 	enc:=gob.NewEncoder(file)
-	err=enc.Encode(metadatas)
+	err=enc.Encode(metadatas)//encode metadata of chunk and write into file
 	return err
 }
 
+//'cs.garbage' record handles of garbage chunks to be deleted, delete them and empty 'cs.garbage'
 func (cs*ChunkServer) garbagecollection()error{
 	for _,v:=range cs.garbage {
 		err:=cs.deleteChunk(v)
@@ -206,6 +210,7 @@ func (cs*ChunkServer) garbagecollection()error{
 	cs.garbage=make([]int64,0)
 	return nil
 }
+
 // heartbeat calls master regularly to report chunk server's status
 func (cs*ChunkServer) heartbeat() error {
 	le := make([]int64, len(cs.leaseSet))
@@ -224,7 +229,7 @@ func (cs*ChunkServer) heartbeat() error {
 	cs.garbage = append(cs.garbage, reply.Garbage...)
 	return nil
 }
-
+//delete a chunk, called by garbagecollection()
 func (cs*ChunkServer)deleteChunk(chunkhandle int64)error{
 	cs.lock.Lock()
 	delete(cs.chunk,chunkhandle)
@@ -232,7 +237,7 @@ func (cs*ChunkServer)deleteChunk(chunkhandle int64)error{
 	filename:=path.Join(cs.rootDir,fmt.Sprintf("chunk%v.chk",chunkhandle))
 	return os.Remove(filename)
 }
-
+//rpc called by master checking whether a chunk is stale, stale:set invalid bit, not stale:update version
 func (cs*ChunkServer) RPCCheckVersion(args gfs.CheckVersionArg,reply *gfs.CheckVersionReply) error{
 	cs.lock.RLock()
 	chunk,ok:=cs.chunk[args.Handle]
@@ -254,14 +259,15 @@ func (cs*ChunkServer) RPCCheckVersion(args gfs.CheckVersionArg,reply *gfs.CheckV
 	}
 	return nil
 }
-
+//rpc called by client or another chunkserver
+//received data is saved in databuffer
 func (cs*ChunkServer) RPCForwardData(args gfs.ForwardDataArg,reply *gfs.ForwardDataReply)error {
 	_,ok:=cs.db.Get(args.DataID)
 	if ok!=nil {
 		return fmt.Errorf("[chunkserver]data %v already exists",args.DataID)
 	}
-	cs.db.Set(args.DataID,args.Data)
-	if len(args.ChainOrder)>0 {
+	cs.db.Set(args.DataID,args.Data)//save received data in databuffer
+	if len(args.ChainOrder)>0 {//send data to next chunkserver(ChainOrder: a chain of chunkserver to send data to)
 		next:=args.ChainOrder[0]
 		args.ChainOrder=args.ChainOrder[1:]
 		rpcc,err:=rpc.Dial("tcp",next)
@@ -277,7 +283,8 @@ func (cs*ChunkServer) RPCForwardData(args gfs.ForwardDataArg,reply *gfs.ForwardD
 	}
 	return nil
 }
-
+// rpc called by master 
+// create a new chunk, save its metadata in 'cs.chunk' and open a new file to store its data
 func (cs*ChunkServer) RPCCreateChunk(args gfs.CreateChunkArg, reply *gfs.CreateChunkReply)error {
 	cs.lock.Lock()
 	defer cs.lock.Unlock()
@@ -293,6 +300,8 @@ func (cs*ChunkServer) RPCCreateChunk(args gfs.CreateChunkArg, reply *gfs.CreateC
 	return err
 }
 
+// rpc called by client
+// read chunk accoring to chunkhandle, offset and length given in args
 func (cs*ChunkServer) RPCReadChunk(args gfs.ReadChunkArg, reply*gfs.ReadChunkReply)error {
 	cs.lock.RLock()
 	chunk,ok:=cs.chunk[args.Handle]
@@ -315,6 +324,8 @@ func (cs*ChunkServer) RPCReadChunk(args gfs.ReadChunkArg, reply*gfs.ReadChunkRep
 	return err
 }
 
+// rpc called by master
+// send a whole chunk to an address given in args according to chunkhandle
 func (cs*ChunkServer) RPCSendCopy(args gfs.SendCopyArg, reply *gfs.SendCopyReply)error {
 	cs.lock.RLock()
 	chunk,ok:=cs.chunk[args.Handle]
@@ -351,7 +362,7 @@ func (cs*ChunkServer) RPCSendCopy(args gfs.SendCopyArg, reply *gfs.SendCopyReply
 	}
 	return nil
 }
-
+//read data from a chunk according to offset and length of the data slice
 func (cs *ChunkServer) readChunk(handle int64, offset int64, data []byte, length *int) error{
 	filename:=path.Join(cs.rootDir,fmt.Sprintf("chunk%v.chk",handle))
 	file,err:=os.Open(filename)
