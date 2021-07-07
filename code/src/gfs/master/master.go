@@ -123,6 +123,7 @@ func NewAndServe(address string, serverRoot string) *Master {
 	m.l = l
 
 	// TODO: merge 2 go func and add shutdown function
+	// xjq: I don't think merging 2 go func will be better...
 	
 	// handle rpc
 	go func() {
@@ -141,6 +142,8 @@ func NewAndServe(address string, serverRoot string) *Master {
 			} else {
 				if !m.dead {
 					// TODO: handle error
+					// xjq: master can do nothing about the connection err
+					// maybe just print a warning msg or log a record
 				}
 			}
 		}
@@ -267,6 +270,7 @@ func (m *Master) Shutdown() error {
 		return err
 	}
 	// TODO: should store again?
+	// xjq: no need to store again...(in my opinion
 	return nil
 }
 
@@ -286,6 +290,12 @@ func (m *Master) serverCheck() error {
 		}
 		cs.RUnlock()
 	}
+	// FIXME: TOCTOU may receive heartbeat after releasing chunkServerInfo RLock
+	// maybe acquire WLock at first and add a member in chunkServerInfo identifying if it is valid
+	// the word, "valid" means there is still a entrance in the relative map
+	// in heartbeat part, even we can get entrance from the map
+	// if it is not valid, then we will consider it is the first time for the chunk server to send heartbeat to master
+	// we can discuss... I just cannot come up with another idea... orz
 
 	// remove dead servers
 	for _, addr := range deadServer {
@@ -547,6 +557,10 @@ func (m *Master) RPCHeartbeat(args gfs.HeartbeatArg, reply *gfs.HeartbeatReply) 
 // RPCGetReplicas is called by client to find all chunk server that holds the chunk.
 // lease holder and secondaries of a chunk.
 func (m *Master) RPCGetReplicas(args gfs.GetReplicasArg, reply *gfs.GetReplicasReply) error {
+	// stale chunk server
+	var staleServers []string
+	// lock for stale chunk server
+	var staleLock sync.Mutex
 	chunkMetadataFound, ok := m.chunkNamespace.Get(fmt.Sprintf("%d", args.Handle))
 	if !ok {
 		return fmt.Errorf("cannot find chunk %d", args.Handle)
@@ -579,11 +593,11 @@ func (m *Master) RPCGetReplicas(args gfs.GetReplicasArg, reply *gfs.GetReplicasR
 				} else {
 					// add to garbage collection
 					// must exist no need to check ok
-					chunkServerInfoFound, _:= m.chunkServerInfos.Get(addr)
-					chunkServerInfo := chunkServerInfoFound.(*ChunkServerInfo)
-					chunkServerInfo.Lock()
-					chunkServerInfo.garbage = append(chunkServerInfo.garbage, args.Handle)
-					chunkServerInfo.Unlock()
+					// FIXME: deadlock
+					// chunkServerInfo and chunkMetadata
+					staleLock.Lock()
+					staleServers = append(staleServers, addr)
+					staleLock.Unlock()
 				}
 				wg.Done()
 			}(v)
@@ -602,7 +616,7 @@ func (m *Master) RPCGetReplicas(args gfs.GetReplicasArg, reply *gfs.GetReplicasR
 			m.rnlLock.Unlock()
 
 			if len(chunkMetadata.location) == 0 {
-				// !! ATTENTION !!
+				// TODO: solve no replica err
 				chunkMetadata.version--
 				return fmt.Errorf("no replica of %v", args.Handle)
 			}
@@ -618,6 +632,19 @@ func (m *Master) RPCGetReplicas(args gfs.GetReplicasArg, reply *gfs.GetReplicasR
 		if v != chunkMetadata.primary {
 			reply.Secondaries = append(reply.Secondaries, v)
 		}
+	}
+	// add garbage
+	for _, v := range staleServers {
+		csi, e := m.chunkServerInfos.Get(v)
+		if !e {
+			continue
+		}
+		chunkServerInfo := csi.(*ChunkServerInfo)
+		chunkServerInfo.Lock()
+		// TODO: should set false?
+		chunkServerInfo.chunks[args.Handle] = false
+		chunkServerInfo.garbage = append(chunkServerInfo.garbage, args.Handle)
+		chunkServerInfo.Unlock()
 	}
 	return nil
 }
@@ -716,7 +743,6 @@ func (m *Master) CreateChunk(fileMetadata *FileMetadata, addrs []string) (int64,
 	chunkMetadata.refcnt = 1
 	// TODO: chunk metadata checksum
 	chunkMetadata.checksum = 0
-	m.chunkNamespace.Set(fmt.Sprintf("%d", handle), chunkMetadata)
 
 	var errList string
 	var success []string
@@ -738,6 +764,7 @@ func (m *Master) CreateChunk(fileMetadata *FileMetadata, addrs []string) (int64,
 			errList += err.Error() + ";"
 		}
 	}
+	m.chunkNamespace.Set(fmt.Sprintf("%d", handle), chunkMetadata)
 
 	if errList == "" {
 		return handle, success, nil
