@@ -256,13 +256,15 @@ func (cs *ChunkServer) deleteChunk(chunkhandle int64) error {
 func (cs *ChunkServer) RPCCheckVersion(args gfs.CheckVersionArg, reply *gfs.CheckVersionReply) error {
 	cs.lock.RLock()
 	chunk, ok := cs.chunk[args.Handle]
-	cs.lock.RUnlock()
 	if ok == false {
+		cs.lock.RUnlock()
 		return fmt.Errorf("[chunkserver]chunk does not exist")
 	}
 	if chunk.invalid {
+		cs.lock.RUnlock()
 		return fmt.Errorf("[chunkserver]chunk is abandoned")
 	}
+	cs.lock.RUnlock()
 	chunk.lock.Lock()
 	defer chunk.lock.Unlock()
 	if chunk.version + 1 == args.Version {
@@ -286,13 +288,8 @@ func (cs *ChunkServer) RPCForwardData(args gfs.ForwardDataArg, reply *gfs.Forwar
 	if len(args.ChainOrder) > 0 {     //send data to next chunkserver(ChainOrder: a chain of chunkserver to send data to)
 		next := args.ChainOrder[0]
 		args.ChainOrder = args.ChainOrder[1:]
-		// FIXME: why don't use wrapped rpc call in rpc_wrap.go
-		rpcc, err := rpc.Dial("tcp", next)
-		if err != nil {
-			fmt.Println("[chunkserver]forwarddata rpc call error:", err)
-			return err
-		}
-		err = rpcc.Call("ChunkServer.RPCForwardData", args, reply)
+
+		err := gfs.Call(next,"ChunkServer.RPCForwardData", args, reply)
 		if err != nil {
 			fmt.Println("[chunkserver]forwarddata rpc call error:", err)
 			return err
@@ -323,13 +320,15 @@ func (cs *ChunkServer) RPCCreateChunk(args gfs.CreateChunkArg, reply *gfs.Create
 func (cs *ChunkServer) RPCReadChunk(args gfs.ReadChunkArg, reply *gfs.ReadChunkReply) error {
 	cs.lock.RLock()
 	chunk, ok := cs.chunk[args.Handle]
-	cs.lock.RUnlock()
 	if ok == false {
+		cs.lock.RUnlock()
 		return fmt.Errorf("[chunkserver]chunk%v doesn't exist", args.Handle)
 	}
 	if chunk.invalid {
+		cs.lock.RUnlock()
 		return fmt.Errorf("[chunkserver]chunk%v is abandoned", args.Handle)
 	}
+	cs.lock.RUnlock()
 	reply.Data = make([]byte, args.Length)
 	var err error
 	chunk.lock.RLock()
@@ -347,13 +346,15 @@ func (cs *ChunkServer) RPCReadChunk(args gfs.ReadChunkArg, reply *gfs.ReadChunkR
 func (cs *ChunkServer) RPCSendCopy(args gfs.SendCopyArg, reply *gfs.SendCopyReply) error {
 	cs.lock.RLock()
 	chunk, ok := cs.chunk[args.Handle]
-	cs.lock.RUnlock()
 	if ok == false {
+		cs.lock.RUnlock()
 		return fmt.Errorf("[chunkserver]chunk%v doesn't exist", args.Handle)
 	}
 	if chunk.invalid {
+		cs.lock.RUnlock()
 		return fmt.Errorf("[chunkserver]chunk%v is abandoned", args.Handle)
 	}
+	cs.lock.RUnlock()
 	chunk.lock.RLock()
 	defer chunk.lock.RUnlock()
 	args1 := &gfs.ApplyCopyArg{
@@ -367,13 +368,8 @@ func (cs *ChunkServer) RPCSendCopy(args gfs.SendCopyArg, reply *gfs.SendCopyRepl
 		fmt.Println("[chunkserver]readchunk error", err)
 		return err
 	}
-	rpcc, err := rpc.Dial("tcp", args.Address)
-	if err != nil {
-		fmt.Println("[chunkserver]applycopy rpc call error:", err)
-		return err
-	}
 	var r gfs.ApplyCopyReply
-	err = rpcc.Call("ChunkServer.RPCApplyCopy", args1, &r)
+	err = gfs.Call(args.Address,"ChunkServer.RPCApplyCopy", args1, &r)
 	if err != nil {
 		fmt.Println("[chunkserver]applycopy rpc call error:", err)
 		return err
@@ -440,8 +436,8 @@ func (cs *ChunkServer) sync(handle int64, ck *ChunkInfo, m *Mutation) error {
 
 }
 
-// FIXME: Is this func called by master?
-// rpc called by master
+
+// rpc called by client
 // write the data at given offet of args to chunkhandle
 func (cs *ChunkServer) RPCWriteChunk(args gfs.WriteChunkArg, reply *gfs.WriteChunkReply) error {
 	//get the data block from data buffer and delete the block
@@ -460,11 +456,11 @@ func (cs *ChunkServer) RPCWriteChunk(args gfs.WriteChunkArg, reply *gfs.WriteChu
 	handle := args.DbID.Handle
 	cs.lock.RLock()
 	ck, ok := cs.chunk[handle]
-	cs.lock.RUnlock()
 	if !ok || ck.invalid {
+		cs.lock.RUnlock()
 		return fmt.Errorf("Chunk %v does not exist or is abandoned", handle)
 	}
-
+	cs.lock.RUnlock()
 	//lock the chunk
 	ck.lock.Lock()
 	defer ck.lock.Unlock()
@@ -493,8 +489,7 @@ func (cs *ChunkServer) RPCWriteChunk(args gfs.WriteChunkArg, reply *gfs.WriteChu
 	return nil
 }
 
-// FIXME: Is this func called by master?
-// rpc called by master
+// rpc called by client
 // write the data of args at the end of chunkhandle
 func (cs *ChunkServer) RPCAppendChunk(args gfs.AppendChunkArg, reply *gfs.AppendChunkReply) error {
 	//get the data block from data buffer and delete the block
@@ -512,11 +507,12 @@ func (cs *ChunkServer) RPCAppendChunk(args gfs.AppendChunkArg, reply *gfs.Append
 	handle := args.DbID.Handle
 	cs.lock.RLock()
 	ck, ok := cs.chunk[handle]
-	cs.lock.RUnlock()
+
 	if !ok || ck.invalid {
+		cs.lock.RUnlock()
 		return fmt.Errorf("Chunk %v does not exist or is abandoned", handle)
 	}
-
+	cs.lock.RUnlock()
 	//lock the chunk
 	ck.lock.Lock()
 	defer ck.lock.Unlock()
@@ -566,11 +562,12 @@ func (cs *ChunkServer) RPCApplyCopy(args gfs.ApplyCopyArg, reply *gfs.ApplyCopyR
 	//get the chunk to handle
 	cs.lock.RLock()
 	ck, ok := cs.chunk[handle]
-	cs.lock.RUnlock()
+
 	if !ok || ck.invalid {
+		cs.lock.RUnlock()
 		return fmt.Errorf("Chunk %v does not exist or is abandoned", handle)
 	}
-
+	cs.lock.RUnlock()
 	//lock the chunk
 	ck.lock.Lock()
 	defer ck.lock.Unlock()
@@ -599,11 +596,12 @@ func (cs *ChunkServer) RPCApplyMutation(args gfs.ApplyMutationArg, reply *gfs.Ap
 	handle := args.DbID.Handle
 	cs.lock.RLock()
 	ck, ok := cs.chunk[handle]
-	cs.lock.RUnlock()
+	
 	if !ok || ck.invalid {
+		cs.lock.RUnlock()
 		return fmt.Errorf("cannot find chunk %v", handle)
 	}
-
+	cs.lock.RUnlock()
 	mutation := &Mutation{data, args.Offset}
 
 	//lock the chunk
