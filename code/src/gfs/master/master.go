@@ -377,6 +377,9 @@ func (m *Master) reReplicationAll() error {
 		if !ok {
 			continue
 		}
+		// FIXME: is there need to check replica num here?
+		// Maybe we can just easily copy the slice while holding lock
+		// and check replica num when we holding the corresponding chunkMetadata as below
 		chunkMetadata := chunkMetadataFound.(*ChunkMetadata)
 		if len(chunkMetadata.location) < gfs.MinimumNumReplicas {
 			newNeedList = append(newNeedList, int(h))
@@ -403,6 +406,11 @@ func (m *Master) reReplicationAll() error {
 
 		// lock chunk so master will not grant lease during copy time
 		chunkMetadata.Lock()
+		// TODO: check replica num here?
+		// FIXME: I'm not quite sure about the expire check as follows
+		// expire is only relative with primary, I think
+		// so we will not handle chunks without a primary having not enough replicas err?
+		// BTW, primary will be selected and expire will be checked only when client ask for all replicas of a chunk
 		if chunkMetadata.expire.Before(time.Now()) {
 			m.reReplicationOne(h)
 			// TODO: handle error
@@ -415,6 +423,7 @@ func (m *Master) reReplicationAll() error {
 
 // reReplicationOne adds replica for one chunk, chunk meta should be locked in top caller
 func (m *Master) reReplicationOne(handle int64) error {
+	// holding corresponding chunk metadata lock now
 	from, to, err := m.chooseReReplication(handle)
 	if err != nil {
 		return err
@@ -470,6 +479,10 @@ func (m *Master) chooseReReplication(handle int64) (from, to string, err error) 
 		// For the first heartbeat, after adding to chunk server map, reReplica happens.
 		// if chunk server report itself holding the relative chunk handle, bang!!! dead lock
 		// for not first heartbeats, if the chunk handle needing to reReplica is in the leases to extend, dead lock will happen.
+		// xjq: solve by release chunkServerInfo lock in heartbeat
+		// TODO: is there any other chance for some goroutines holding chunkServerInfo lock with acquiring chunkMetaData lock?
+		// If so, deadlock will happen
+		// detect later... I don't want to see any go code today...
 		cs.RLock() // can be deleted
 		if cs.chunks[handle] {
 			from = tuple.Key
@@ -491,11 +504,10 @@ func (m *Master) RPCHeartbeat(args gfs.HeartbeatArg, reply *gfs.HeartbeatReply) 
 	isFirst := true
 	chunkServerInfoNew := new(ChunkServerInfo)
 	chunkServerInfoNew.Lock()
-	defer chunkServerInfoNew.Unlock()
 	chunkServerInfoNew.lastHeartbeat = time.Now()
 	chunkServerInfoNew.chunks = make(map[int64]bool)
 	chunkServerInfoNew.garbage = nil
-	chunkServerInfo := chunkServerInfoNew
+	chunkServerInfoNew.Unlock()
 	// check and set
 	ok := m.chunkServerInfos.SetIfAbsent(args.Address, chunkServerInfoNew)
 	if !ok {
@@ -505,7 +517,6 @@ func (m *Master) RPCHeartbeat(args gfs.HeartbeatArg, reply *gfs.HeartbeatReply) 
 		chunkServerInfoFound, _ := m.chunkServerInfos.Get(args.Address)
 		chunkServerInfoOld := chunkServerInfoFound.(*ChunkServerInfo)
 		chunkServerInfoOld.Lock()
-		defer chunkServerInfoOld.Unlock()
 		// TODO: the entrance in map may be deleted, check it
 
 		// update time
@@ -516,9 +527,12 @@ func (m *Master) RPCHeartbeat(args gfs.HeartbeatArg, reply *gfs.HeartbeatReply) 
 			chunkServerInfoOld.chunks[v] = false
 		}
 		chunkServerInfoOld.garbage = make([]int64, 0)
-		chunkServerInfo = chunkServerInfoOld
+		chunkServerInfoOld.Unlock()
 	}
-
+	// FIXME: release chunkServerInfo Lock here to handle deadlock
+	// FIXME: there is no need for isFirst
+	// if no extend leases in the first heartbeat, no need for isFirst
+	// TODO: handle first heartbeat's set of leases to be extended
 	if isFirst {
 		// if is first heartbeat, let chunk server report itself
 		var r gfs.ReportSelfReply
@@ -526,6 +540,7 @@ func (m *Master) RPCHeartbeat(args gfs.HeartbeatArg, reply *gfs.HeartbeatReply) 
 		if err != nil {
 			return err
 		}
+		garbage := make([]int64, 0)
 		for _, v := range r.Chunks {
 			chunkMetadataFound, e := m.chunkNamespace.Get(fmt.Sprintf("%d", v.ChunkHandle))
 			if !e {
@@ -534,18 +549,19 @@ func (m *Master) RPCHeartbeat(args gfs.HeartbeatArg, reply *gfs.HeartbeatReply) 
 			}
 			chunkMetadata := chunkMetadataFound.(*ChunkMetadata)
 			chunkMetadata.Lock()
-			if v.Checksum == chunkMetadata.checksum {
-				if v.Version == chunkMetadata.version {
-					// TODO: after adding address, the needed to reReplica slice may get changed
-					chunkMetadata.location = append(chunkMetadata.location, args.Address)
-				} else {
-					chunkServerInfo.garbage = append(chunkServerInfo.garbage, v.ChunkHandle)
-				}
+			if v.Checksum == chunkMetadata.checksum && v.Version == chunkMetadata.version {
+				// TODO: after adding address, the needed to reReplica slice may get changed
+				// slove: check at reReplica part. no need to worry
+				chunkMetadata.location = append(chunkMetadata.location, args.Address)
 			} else {
-				chunkServerInfo.garbage = append(chunkServerInfo.garbage, v.ChunkHandle)
+				garbage = append(garbage, v.ChunkHandle)
 			}
 			chunkMetadata.Unlock()
 		}
+		// set garbage
+		chunkServerInfoNew.Lock()
+		chunkServerInfoNew.garbage = garbage
+		chunkServerInfoNew.Unlock()
 	} else {
 		// use slice to avoid handling only front leases to extend
 		var invalidHandle []int64 = make([]int64, 0)
