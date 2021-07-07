@@ -155,8 +155,14 @@ func NewAndServe(address string, serverRoot string) *Master {
 			case <-m.shutdown:
 				return
 			case <-serverCheckTicker:
+				if m.dead {     // check if shutdown
+					return
+				}
 				err = m.serverCheck()
 			case <-storeMetaTicker:
+				if m.dead {     // check if shutdown
+					return
+				}
 				err = m.storeMeta()
 			}
 			if err != nil {
@@ -290,11 +296,6 @@ func (m *Master) Shutdown() error {
 
 // serverCheck checks chunkserver and removes chunkinfo of disconnnected servers
 func (m *Master) serverCheck() error {
-	// if master is dead, stop server check
-	if m.dead {
-		return nil
-	}
-
 	// detect dead servers
 	var deadServer []string
 	now := time.Now()
