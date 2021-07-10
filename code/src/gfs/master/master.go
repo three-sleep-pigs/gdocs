@@ -182,7 +182,7 @@ func NewAndServe(address string, serverRoot string) *Master {
 // loadMeta loads metadata from disk
 func (m *Master) loadMeta() error {
 	filename := path.Join(m.serverRoot, gfs.MetaFileName)
-	file, err := os.OpenFile(filename, os.O_RDONLY, 0755)
+	file, err := os.OpenFile(filename, os.O_RDONLY, 0644)
 	if err != nil {
 		return err
 	}
@@ -230,7 +230,7 @@ func (m *Master) loadMeta() error {
 func (m *Master) storeMeta() error {
 	// TODO: use lock to protect metadata file
 	filename := path.Join(m.serverRoot, gfs.MetaFileName)
-	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0755)
+	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
@@ -278,6 +278,7 @@ func (m *Master) storeMeta() error {
 
 // Shutdown shuts down master
 // FIXME: Shutdown shouldn't be called concurrently because TOCTTOU of m.dead
+// no need to fix it
 func (m *Master) Shutdown() error {
 	if !m.dead {
 		m.dead = true
@@ -320,6 +321,7 @@ func (m *Master) serverCheck() error {
 	// We can use chunkServerInfo.Lock to protect remove and change chunkmeta.location.
 	// But this may lead to dead lock.
 
+	// TODO: use Pop replace remove
 	// remove dead servers
 	for _, addr := range deadServer {
 		chunkServerInfoFound, ok := m.chunkServerInfos.Get(addr)
@@ -852,6 +854,7 @@ func (m *Master) RPCCreateFile(args gfs.CreateFileArg, reply *gfs.CreateFileRepl
 
 // RPCDeleteFile is called by client to delete a file
 func (m *Master) RPCDeleteFile(args gfs.DeleteFileArg, reply *gfs.DeleteFileReply) error {
+	// TODO: use Pop to replace Get+Remove
 	parents := getParents(args.Path)
 	ok, fileMetadatas, err := m.acquireParentsRLocks(parents)
 	if !ok {
@@ -879,6 +882,7 @@ func (m *Master) RPCDeleteFile(args gfs.DeleteFileArg, reply *gfs.DeleteFileRepl
 
 // RPCRenameFile is called by client to rename a file
 func (m *Master) RPCRenameFile(args gfs.RenameFileArg, reply *gfs.RenameFileReply) error {
+	// TODO: use Pop to replace Get+Remove
 	sourceParents := getParents(args.Source)
 	ok, sourceFileMetadatas, err := m.acquireParentsRLocks(sourceParents)
 	if !ok {
