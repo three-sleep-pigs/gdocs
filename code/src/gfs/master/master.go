@@ -111,6 +111,7 @@ func NewAndServe(address string, serverRoot string) *Master {
 	m.fileNamespace = cmap.New()
 	m.chunkNamespace = cmap.New()
 	m.chunkServerInfos = cmap.New()
+	// TODO: Check RootDir before loadMeta
 	m.loadMeta()
 
 	// register rpc server
@@ -155,15 +156,19 @@ func NewAndServe(address string, serverRoot string) *Master {
 			case <-m.shutdown:
 				return
 			case <-serverCheckTicker:
-				if m.dead {     // check if shutdown
-					return
+				{
+					if m.dead {     // check if shutdown
+						return
+					}
+					err = m.serverCheck()
 				}
-				err = m.serverCheck()
 			case <-storeMetaTicker:
-				if m.dead {     // check if shutdown
-					return
+				{
+					if m.dead {     // check if shutdown
+						return
+					}
+					err = m.storeMeta()
 				}
-				err = m.storeMeta()
 			}
 			if err != nil {
 				// TODO: log error
@@ -220,7 +225,10 @@ func (m *Master) loadMeta() error {
 }
 
 // storeMeta stores metadata to disk
+// FIXME: consistency problem
+// But the file is reliable after shutdown.
 func (m *Master) storeMeta() error {
+	// TODO: use lock to protect metadata file
 	filename := path.Join(m.serverRoot, gfs.MetaFileName)
 	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0755)
 	if err != nil {
@@ -241,13 +249,7 @@ func (m *Master) storeMeta() error {
 		})
 		f.RUnlock()
 	}
-	// FIXME: There may be inconsistency between stored fileMetadata and stored chunkMetadata
-	// For example, we creat a new chunk for a file A after storing A's metadata
-	// then there will be a refcnt = 1 chunk stored in chunkMetadata however no stored fileMetadata records it
-	// Is there a need to record file full path in chunkMetadata, then at the load part we can detect and fix above question
-	// but this may invoke other inconsistency problems
-	// anyway, the key point here is that we should snapshot the whole system to make sure consistency
-	// to be discussed later...
+
 	for tuple := range m.chunkNamespace.IterBuffered() {
 		h, err := strconv.ParseInt(tuple.Key, 10, 64)
 		if err != nil {
@@ -264,8 +266,7 @@ func (m *Master) storeMeta() error {
 		})
 		c.RUnlock()
 	}
-	// FIXME: same problem
-	// but we can just easily think the new created chunk after storing chunkMetadata doesn't exist
+
 	m.nhLock.Lock()
 	meta.nextHandle = m.nextHandle
 	m.nhLock.Unlock()
@@ -276,7 +277,7 @@ func (m *Master) storeMeta() error {
 }
 
 // Shutdown shuts down master
-// shouldn't be called concurrently
+// FIXME: Shutdown shouldn't be called concurrently because TOCTTOU of m.dead
 func (m *Master) Shutdown() error {
 	if !m.dead {
 		m.dead = true
@@ -287,7 +288,6 @@ func (m *Master) Shutdown() error {
 		err := m.storeMeta()
 		return err
 	}
-	// FIXME: TOCTTOU of m.dead
 	return nil
 }
 
@@ -308,11 +308,17 @@ func (m *Master) serverCheck() error {
 		cs.RUnlock()
 	}
 	// FIXME: TOCTOU may receive heartbeat after releasing chunkServerInfo RLock
-	// maybe acquire WLock at first and add a member in chunkServerInfo identifying if it is valid
+	// xjq: maybe acquire WLock at first and add a member in chunkServerInfo identifying if it is valid
 	// the word, "valid" means there is still a entrance in the relative map
 	// in heartbeat part, even we can get entrance from the map
 	// if it is not valid, then we will consider it is the first time for the chunk server to send heartbeat to master
 	// we can discuss... I just cannot come up with another idea... orz
+
+	// lyc: Remove should be replaced by "valid" flag.
+	// And we should consider the consistency of chunkserverinfo and chunkmeta.
+	// Chunk server may be added between remove and change chunkmeta.location.
+	// We can use chunkServerInfo.Lock to protect remove and change chunkmeta.location.
+	// But this may lead to dead lock.
 
 	// remove dead servers
 	for _, addr := range deadServer {
@@ -380,6 +386,9 @@ func (m *Master) reReplicationAll() error {
 		// FIXME: is there need to check replica num here?
 		// Maybe we can just easily copy the slice while holding lock
 		// and check replica num when we holding the corresponding chunkMetadata as below
+
+		// lyc: It's right! Move replica num check down and delete replicasNeedList if success/satisfied/not exist.
+		// Check if satisfied again after success.
 		chunkMetadata := chunkMetadataFound.(*ChunkMetadata)
 		if len(chunkMetadata.location) < gfs.MinimumNumReplicas {
 			newNeedList = append(newNeedList, int(h))

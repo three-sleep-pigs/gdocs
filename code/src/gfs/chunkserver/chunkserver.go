@@ -16,6 +16,11 @@ import (
 
 type void struct{}
 
+// FIXME:
+// I think using ChunkServer.lock to protect var in ChunkServer(such as garbage, garbage, etc)
+// and using a concurrent map to protect chunk map will be better.
+// Besides, I think we can use ChunkInfo lock to protect both ChunkInfo and file.
+
 // ChunkServer struct
 type ChunkServer struct {
 	lock     sync.RWMutex // protect not only chunk server info but chunk metadata
@@ -74,6 +79,7 @@ func newChunkserver(id string, master string, rootDir string) *ChunkServer {
 	}
 	cs.l = l
 
+	// FIXME: If we decide to change lock, loadMeta() should be called before rpc register.
 	_, err := os.Stat(rootDir) //check whether rootDir exists, if not, mkdir it
 	if err != nil {
 		err = os.Mkdir(rootDir, 0644)
@@ -81,9 +87,9 @@ func newChunkserver(id string, master string, rootDir string) *ChunkServer {
 			fmt.Println("[chunkserver]mkdir error:", err)
 		}
 	}
-	err = cs.loadmeta()
+	err = cs.loadMeta()
 	if err != nil {
-		fmt.Println("[chunkserver]loadmeta error:", err)
+		fmt.Println("[chunkserver]loadMeta error:", err)
 	}
 	//background coroutine loops receiving rpc calls, return immediately when the chunkserver shutdown
 	go func() {
@@ -108,16 +114,18 @@ func newChunkserver(id string, master string, rootDir string) *ChunkServer {
 	}()
 	//background coroutine heartbreat,store metadata,collect garbage regularly
 	go func() {
-		// TODO: turn into common properties in common.go
-		heartbeat := time.Tick(100 * time.Millisecond)
-		storemeta := time.Tick(30 * time.Minute)
-		garbagecollection := time.Tick(2 * time.Hour)
+		heartbeat := time.Tick(gfs.HeartbeatInterval)
+		storeMeta := time.Tick(gfs.StoreMetaInterval)
+		garbageCollection := time.Tick(gfs.GarbageCollectionInterval)
 		for {
 			select {
 			case <-cs.shutdown:
 				return
 			case <-heartbeat:
 				{
+					if cs.dead {     // check if shutdown
+						return
+					}
 					err := cs.heartbeat()
 					if err != nil {
 						// TODO: handle heartbeat err
@@ -125,16 +133,22 @@ func newChunkserver(id string, master string, rootDir string) *ChunkServer {
 						fmt.Println("[chunkserver]heartbeat error:", err)
 					}
 				}
-			case <-storemeta:
+			case <-storeMeta:
 				{
-					err := cs.storemeta()
+					if cs.dead {     // check if shutdown
+						return
+					}
+					err := cs.storeMeta()
 					if err != nil {
-						fmt.Println("[chunkserver]storemeta error:", err)
+						fmt.Println("[chunkserver]storeMeta error:", err)
 					}
 				}
-			case <-garbagecollection:
+			case <-garbageCollection:
 				{
-					err := cs.garbagecollection()
+					if cs.dead {     // check if shutdown
+						return
+					}
+					err := cs.garbageCollection()
 					if err != nil {
 						fmt.Println("[chunkserver]garbage collection error:", err)
 					}
@@ -145,23 +159,23 @@ func newChunkserver(id string, master string, rootDir string) *ChunkServer {
 	return cs
 }
 
-//called when close the chunk
+// Shutdown called when close the chunk
+// FIXME: Shutdown shouldn't be called concurrently because TOCTTOU of cs.dead
 func (cs *ChunkServer) Shutdown() {
 	if cs.dead == false {
 		cs.dead = true
 		close(cs.shutdown) //close the channel
 		cs.l.Close()       //close the listener
-	}
-	// TODO: same quetion as master
-	// is there need to store data
-	err := cs.storemeta() //store chunk metadata into disk
-	if err != nil {
-		fmt.Println("[chunkserver]store metadata error:", err)
+		err := cs.storeMeta() //store chunk metadata into disk
+		if err != nil {
+			fmt.Println("[chunkserver]store metadata error:", err)
+		}
 	}
 }
 
 //load metadata of chunks from disk into chunk map, called by newChunkServer
-func (cs *ChunkServer) loadmeta() error {
+func (cs *ChunkServer) loadMeta() error {
+	// TODO: Delete lock and use concurrent map
 	cs.lock.Lock()
 	defer cs.lock.Unlock()
 	filename := path.Join(cs.rootDir, "chunkserver.meta")
@@ -186,8 +200,9 @@ func (cs *ChunkServer) loadmeta() error {
 	return nil
 }
 
-//store metadata of chunks into disk, called by shutdown()
-func (cs *ChunkServer) storemeta() error {
+// store metadata of chunks into disk, called by shutdown()
+func (cs *ChunkServer) storeMeta() error {
+	// TODO: replace lock with concurrent map. Use a lock to protect file.
 	cs.lock.RLock()
 	defer cs.lock.RUnlock()
 	filename := path.Join(cs.rootDir, "chunkserver.meta")
@@ -210,11 +225,14 @@ func (cs *ChunkServer) storemeta() error {
 }
 
 //'cs.garbage' record handles of garbage chunks to be deleted, delete them and empty 'cs.garbage'
-func (cs *ChunkServer) garbagecollection() error {
+func (cs *ChunkServer) garbageCollection() error {
+	// TODO: use cs.lock to protect cs.garbage
 	for _, v := range cs.garbage {
 		err := cs.deleteChunk(v)
 		if err != nil {
 			return err
+			// FIXME: not return, should continue and just log/print the err.
+			// Delete the same chunk twice may return err, but it doesn't matter.
 		}
 	}
 	cs.garbage = make([]int64, 0)
@@ -224,7 +242,8 @@ func (cs *ChunkServer) garbagecollection() error {
 // heartbeat calls master regularly to report chunk server's status
 func (cs *ChunkServer) heartbeat() error {
 	// TODO: add leases to extend
-	le := make([]int64, len(cs.leaseSet))
+	// TODO: use cs.lock to protect cs.leaseSet and cs.garbage
+	le := make([]int64, len(cs.leaseSet)) //FIXME: var le []int64? I think le should be empty.
 	for v := range cs.leaseSet {
 		le = append(le, v)
 	}
@@ -243,8 +262,10 @@ func (cs *ChunkServer) heartbeat() error {
 	return nil
 }
 
-//delete a chunk, called by garbagecollection()
+//delete a chunk, called by garbageCollection()
 func (cs *ChunkServer) deleteChunk(chunkhandle int64) error {
+	// TODO: replace lock with concurrent map
+	// TODO: chunk lock
 	cs.lock.Lock()
 	delete(cs.chunk, chunkhandle)
 	cs.lock.Unlock()
@@ -254,6 +275,7 @@ func (cs *ChunkServer) deleteChunk(chunkhandle int64) error {
 
 //rpc called by master checking whether a chunk is stale, stale:set invalid bit, not stale:update version
 func (cs *ChunkServer) RPCCheckVersion(args gfs.CheckVersionArg, reply *gfs.CheckVersionReply) error {
+	// TODO: damn lock!!!
 	cs.lock.RLock()
 	chunk, ok := cs.chunk[args.Handle]
 	if ok == false {
@@ -281,9 +303,10 @@ func (cs *ChunkServer) RPCCheckVersion(args gfs.CheckVersionArg, reply *gfs.Chec
 //received data is saved in databuffer
 func (cs *ChunkServer) RPCForwardData(args gfs.ForwardDataArg, reply *gfs.ForwardDataReply) error {
 	_, ok := cs.db.Get(args.DataID)
-	if ok != nil {
+	if ok != nil { // FIXME: ok == nil
 		return fmt.Errorf("[chunkserver]data %v already exists", args.DataID)
 	}
+	// FIXME: TOCTTOU We can add SetIfAbsent in db
 	cs.db.Set(args.DataID, args.Data) //save received data in databuffer
 	if len(args.ChainOrder) > 0 {     //send data to next chunkserver(ChainOrder: a chain of chunkserver to send data to)
 		next := args.ChainOrder[0]
@@ -301,6 +324,8 @@ func (cs *ChunkServer) RPCForwardData(args gfs.ForwardDataArg, reply *gfs.Forwar
 // rpc called by master
 // create a new chunk, save its metadata in 'cs.chunk' and open a new file to store its data
 func (cs *ChunkServer) RPCCreateChunk(args gfs.CreateChunkArg, reply *gfs.CreateChunkReply) error {
+	// TODO: replace lock with concurrent map
+	// TODO: use chunk lock to protect open file, lock before setIfAbsent
 	cs.lock.Lock()
 	defer cs.lock.Unlock()
 	_, ok := cs.chunk[args.Handle]
@@ -318,6 +343,8 @@ func (cs *ChunkServer) RPCCreateChunk(args gfs.CreateChunkArg, reply *gfs.Create
 // rpc called by client
 // read chunk accoring to chunkhandle, offset and length given in args
 func (cs *ChunkServer) RPCReadChunk(args gfs.ReadChunkArg, reply *gfs.ReadChunkReply) error {
+	// TODO: replace lock with concurrent map
+	// TODO: chunk lock
 	cs.lock.RLock()
 	chunk, ok := cs.chunk[args.Handle]
 	if ok == false {
