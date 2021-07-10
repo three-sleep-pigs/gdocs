@@ -2,6 +2,7 @@ package chunkserver
 
 import (
 	"../../gfs"
+	"../cmap"
 	"encoding/gob"
 	"fmt"
 	"io"
@@ -30,7 +31,7 @@ type ChunkServer struct {
 	l        net.Listener
 	shutdown chan struct{}
 
-	chunk    map[int64]*ChunkInfo // chunk information
+	chunks    cmap.ConcurrentMap// map[int64]*ChunkInfo
 	dead     bool                 // set to true if server is shutdown
 	garbage  []int64              // garbage
 	leaseSet map[int64]void       // leases to be extended? I guess...
@@ -367,7 +368,7 @@ func (cs *ChunkServer) RPCReadChunk(args gfs.ReadChunkArg, reply *gfs.ReadChunkR
 	}
 	return err
 }
-
+// TODO: xjq from here
 // rpc called by master
 // send a whole chunk to an address given in args according to chunkhandle
 func (cs *ChunkServer) RPCSendCopy(args gfs.SendCopyArg, reply *gfs.SendCopyReply) error {

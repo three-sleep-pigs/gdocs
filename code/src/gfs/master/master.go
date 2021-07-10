@@ -1,6 +1,8 @@
 package master
 
 import (
+	"../../gfs"
+	"../cmap"
 	"encoding/gob"
 	"fmt"
 	"net"
@@ -12,9 +14,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"../../gfs"
-	"../cmap"
 )
 
 // TODO: log, checkpoint, recovery
@@ -71,6 +70,7 @@ type ChunkServerInfo struct {
 	lastHeartbeat time.Time
 	chunks        map[int64]bool // set of chunks that the chunkserver has
 	garbage       []int64
+	valid 		  bool
 }
 
 type PersistentFileMetadata struct {
