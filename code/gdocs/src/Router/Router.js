@@ -2,7 +2,9 @@ import React from 'react';
 import { Router, Route, Redirect, Switch } from 'react-router-dom';
 import ExcelView from "../View/ExcelView";
 import LoginView from "../View/LoginView";
+import RegisterView from "../View/RegisterView";
 import MenuView from "../View/MenuView";
+import HomeView from "../View/HomeView";
 import {history} from "../Utils/history";
 
 class GDocsRouter extends React.Component{
@@ -19,9 +21,11 @@ class GDocsRouter extends React.Component{
             <Router history={history}>
                 <Switch>
                     <Route exact path="/login" component={LoginView}/>
-                    <Route exact path="/home" component={MenuView}/>
+                    <Route exact path="/register" component={RegisterView}/>
+                    <Route exact path="/menu" component={MenuView}/>
                     <Route exact path="/excel" component={ExcelView}/>
-                    <Redirect from="/*" to="/login"/>
+                    <Route exact path="/home" component={HomeView}/>
+                    <Redirect from="/*" to="/home"/>
                 </Switch>
             </Router>
         );
