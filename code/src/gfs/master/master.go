@@ -695,6 +695,7 @@ func (m *Master) RPCGetReplicas(args gfs.GetReplicasArg, reply *gfs.GetReplicasR
 		chunkServerInfo := csi.(*ChunkServerInfo)
 		chunkServerInfo.Lock()
 		// TODO: should set false?
+		// I think should.
 		chunkServerInfo.chunks[args.Handle] = false
 		chunkServerInfo.garbage = append(chunkServerInfo.garbage, args.Handle)
 		chunkServerInfo.Unlock()

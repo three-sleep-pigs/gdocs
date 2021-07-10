@@ -265,7 +265,7 @@ func (cs *ChunkServer) heartbeat() error {
 //delete a chunk, called by garbageCollection()
 func (cs *ChunkServer) deleteChunk(chunkhandle int64) error {
 	// TODO: replace lock with concurrent map
-	// TODO: chunk lock
+	// TODO: Pop and chunk lock
 	cs.lock.Lock()
 	delete(cs.chunk, chunkhandle)
 	cs.lock.Unlock()
@@ -427,6 +427,8 @@ func (cs *ChunkServer) writeChunk(handle int64, data []byte, offset int64) error
 
 	//open the chunk file
 	filename := path.Join(cs.rootDir, fmt.Sprintf("chunk%v.chk", handle))
+	// FIXME: os.O_CREATE is wrong, writeChunk shouldn't create file
+	// Consider writeChunk and deleteChunk happen concurrently, writeChunk shouldn't create file after os.Remove
 	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0755)
 	if err != nil {
 		return err
