@@ -337,65 +337,54 @@ func (cs *ChunkServer) RPCCheckVersion(args gfs.CheckVersionArg, reply *gfs.Chec
 
 // RPCForwardData rpc called by client or another chunkServer, received data is saved in downloadBuffer
 func (cs *ChunkServer) RPCForwardData(args gfs.ForwardDataArg, reply *gfs.ForwardDataReply) error {
-	_, ok := cs.db.Get(args.DataID)
-	if ok != nil { // FIXME: ok == nil
-		return fmt.Errorf("[chunkserver]data %v already exists", args.DataID)
+	ok := cs.db.SetIfAbsent(args.DataID, args.Data)
+	if !ok {
+		fmt.Printf("[chunkServer]data %v already exists\n", args.DataID)
 	}
-	// FIXME: TOCTTOU We can add SetIfAbsent in db
-	cs.db.Set(args.DataID, args.Data) //save received data in databuffer
-	if len(args.ChainOrder) > 0 {     //send data to next chunkserver(ChainOrder: a chain of chunkserver to send data to)
+
+	// send data to next chunkServer(ChainOrder: a chain of chunkServer to send data to)
+	if len(args.ChainOrder) > 0 {
 		next := args.ChainOrder[0]
 		args.ChainOrder = args.ChainOrder[1:]
 
 		err := gfs.Call(next,"ChunkServer.RPCForwardData", args, reply)
 		if err != nil {
-			fmt.Println("[chunkserver]forwarddata rpc call error:", err)
 			return err
 		}
 	}
 	return nil
 }
 
-// rpc called by master
-// create a new chunk, save its metadata in 'cs.chunk' and open a new file to store its data
+// RPCCreateChunk create a new chunk, save its metadata and open a new file to store its data, called by master
 func (cs *ChunkServer) RPCCreateChunk(args gfs.CreateChunkArg, reply *gfs.CreateChunkReply) error {
-	// TODO: replace lock with concurrent map
-	// TODO: use chunk lock to protect open file, lock before setIfAbsent
-	cs.lock.Lock()
-	defer cs.lock.Unlock()
-	_, ok := cs.chunk[args.Handle]
-	if ok {
-		return fmt.Errorf("[chunkserver]create chunk error")
-	}
-	cs.chunk[args.Handle] = &ChunkInfo{
-		length: 0,
+	chunk := new(ChunkInfo)
+	chunk.lock.Lock()
+	defer chunk.lock.Unlock()
+	chunk.length = 0
+	ok := cs.chunks.SetIfAbsent(fmt.Sprintf("%d", args.Handle), chunk)
+	if !ok {
+		return fmt.Errorf("[chunkServer]create chunk error: chunk%v already exists", args.Handle)
 	}
 	filename := path.Join(cs.rootDir, fmt.Sprintf("chunk%v.chk", args.Handle))
-	_, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0644)
+	_, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	return err
 }
 
-// rpc called by client
-// read chunk accoring to chunkhandle, offset and length given in args
+// RPCReadChunk read chunk according to handle, offset and length given in args, called by client
 func (cs *ChunkServer) RPCReadChunk(args gfs.ReadChunkArg, reply *gfs.ReadChunkReply) error {
-	// TODO: replace lock with concurrent map
-	// TODO: chunk lock
-	cs.lock.RLock()
-	chunk, ok := cs.chunk[args.Handle]
-	if ok == false {
-		cs.lock.RUnlock()
-		return fmt.Errorf("[chunkserver]chunk%v doesn't exist", args.Handle)
+	v, ok := cs.chunks.Get(fmt.Sprintf("%d", args.Handle))
+	if !ok {
+		return fmt.Errorf("[chunkServer]chunk%v doesn't exist", args.Handle)
 	}
-	if chunk.invalid {
-		cs.lock.RUnlock()
-		return fmt.Errorf("[chunkserver]chunk%v is abandoned", args.Handle)
-	}
-	cs.lock.RUnlock()
-	reply.Data = make([]byte, args.Length)
-	var err error
+	chunk := v.(*ChunkInfo)
 	chunk.lock.RLock()
-	err = cs.readChunk(args.Handle, args.Offset, reply.Data, &reply.Length)
-	chunk.lock.RUnlock()
+	defer chunk.lock.RUnlock()
+
+	if chunk.invalid {
+		return fmt.Errorf("[chunkServer]chunk%v is abandoned", args.Handle)
+	}
+	reply.Data = make([]byte, args.Length)
+	err := cs.readChunk(args.Handle, args.Offset, reply.Data, &reply.Length)
 	if err == io.EOF {
 		reply.ErrorCode = 500
 		return nil
@@ -439,6 +428,7 @@ func (cs *ChunkServer) RPCSendCopy(args gfs.SendCopyArg, reply *gfs.SendCopyRepl
 	return nil
 }
 
+// called by RPCReadChunk, chunk.lock is locked in top caller
 //read data from a chunk according to offset and length of the data slice
 func (cs *ChunkServer) readChunk(handle int64, offset int64, data []byte, length *int) error {
 	filename := path.Join(cs.rootDir, fmt.Sprintf("chunk%v.chk", handle))

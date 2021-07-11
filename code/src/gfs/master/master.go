@@ -9,7 +9,6 @@ import (
 	"net/rpc"
 	"os"
 	"path"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,6 +25,8 @@ type Master struct {
 	l          net.Listener
 	shutdown   chan struct{}
 	dead       bool // set to ture if server is shutdown
+	metaFileLock sync.Mutex // protect metadata file
+
 	nhLock     sync.Mutex
 	nextHandle int64
 
@@ -111,15 +112,31 @@ func NewAndServe(address string, serverRoot string) *Master {
 	m.fileNamespace = cmap.New()
 	m.chunkNamespace = cmap.New()
 	m.chunkServerInfos = cmap.New()
-	// TODO: Check RootDir before loadMeta
-	m.loadMeta()
+
+	// initial metadata
+	_, err := os.Stat(serverRoot) //check whether rootDir exists, if not, mkdir it
+	if err != nil {
+		err = os.Mkdir(serverRoot, 0644)
+		if err != nil {
+			fmt.Println("[masterServer]mkdir error:", err)
+			return nil
+		}
+	}
+	err = m.loadMeta()
+	if err != nil {
+		fmt.Println("[masterServer]loadMeta error:", err)
+	}
 
 	// register rpc server
 	rpcs := rpc.NewServer()
-	rpcs.Register(m)
+	err = rpcs.Register(m)
+	if err != nil {
+		fmt.Println("[masterServer]rpc server register error:", err)
+		return nil
+	}
 	l, e := net.Listen("tcp", string(m.address))
 	if e != nil {
-		// TODO: handle error
+		fmt.Println("[masterServer]listen error:", e)
 		return nil
 	}
 	m.l = l
@@ -136,11 +153,14 @@ func NewAndServe(address string, serverRoot string) *Master {
 			if err == nil {
 				go func() {
 					rpcs.ServeConn(conn)
-					conn.Close()
+					err := conn.Close()
+					if err != nil {
+						fmt.Println("[masterServer]connect close error:", err)
+					}
 				}()
 			} else {
 				if !m.dead {
-					// TODO: log error
+					fmt.Println("[masterServer]connect error:", err)
 				}
 			}
 		}
@@ -151,7 +171,6 @@ func NewAndServe(address string, serverRoot string) *Master {
 		serverCheckTicker := time.Tick(gfs.ServerCheckInterval)
 		storeMetaTicker := time.Tick(gfs.StoreMetaInterval)
 		for {
-			var err error
 			select {
 			case <-m.shutdown:
 				return
@@ -160,18 +179,21 @@ func NewAndServe(address string, serverRoot string) *Master {
 					if m.dead {     // check if shutdown
 						return
 					}
-					err = m.serverCheck()
+					err := m.serverCheck()
+					if err != nil {
+						fmt.Println("[masterServer]serverCheck error:", err)
+					}
 				}
 			case <-storeMetaTicker:
 				{
 					if m.dead {     // check if shutdown
 						return
 					}
-					err = m.storeMeta()
+					err := m.storeMeta()
+					if err != nil {
+						fmt.Println("[masterServer]storeMeta error:", err)
+					}
 				}
-			}
-			if err != nil {
-				// TODO: log error
 			}
 		}
 	}()
@@ -204,8 +226,7 @@ func (m *Master) loadMeta() error {
 		f.chunkHandles = pf.chunkHandles
 		e := m.fileNamespace.SetIfAbsent(pf.path, f)
 		if !e {
-			// TODO: handle exist error
-			continue
+			fmt.Println("[masterServer]set file metadata exist")
 		}
 	}
 
@@ -216,8 +237,7 @@ func (m *Master) loadMeta() error {
 		c.refcnt = pc.refcnt
 		e := m.chunkNamespace.SetIfAbsent(fmt.Sprintf("%d", pc.chunkHandle), c)
 		if !e {
-			// TODO: handle exist error
-			continue
+			fmt.Println("[masterServer]set chunk metadata exist")
 		}
 	}
 
@@ -225,10 +245,10 @@ func (m *Master) loadMeta() error {
 }
 
 // storeMeta stores metadata to disk
-// FIXME: consistency problem
-// But the file is reliable after shutdown.
 func (m *Master) storeMeta() error {
-	// TODO: use lock to protect metadata file
+	m.metaFileLock.Lock() // prevent storeMeta from being called concurrently
+	defer m.metaFileLock.Unlock()
+
 	filename := path.Join(m.serverRoot, gfs.MetaFileName)
 	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
@@ -253,7 +273,7 @@ func (m *Master) storeMeta() error {
 	for tuple := range m.chunkNamespace.IterBuffered() {
 		h, err := strconv.ParseInt(tuple.Key, 10, 64)
 		if err != nil {
-			// TODO: handle error
+			fmt.Println("[masterServer]parse chunk handle error:", err)
 			continue
 		}
 		c := tuple.Val.(*ChunkMetadata)
@@ -279,95 +299,67 @@ func (m *Master) storeMeta() error {
 // Shutdown shuts down master
 // FIXME: Shutdown shouldn't be called concurrently because TOCTTOU of m.dead
 // no need to fix it
-func (m *Master) Shutdown() error {
+func (m *Master) Shutdown() {
 	if !m.dead {
 		m.dead = true
 		// close will cause case <- shutdown part get value 0
 		// end the rpc goroutine and the server check, store goroutine
 		close(m.shutdown)
-		m.l.Close()
-		err := m.storeMeta()
-		return err
+		err := m.l.Close()
+		if err != nil {
+			fmt.Println("[masterServer]close listener error:", err)
+		}
+		err = m.storeMeta()
+		if err != nil {
+			fmt.Println("[masterServer]store metadata error:", err)
+		}
 	}
-	return nil
 }
 
-//TODO: check consistency of file meta and chunk meta
-//TODO: check consistency of chunkserverinfo and location in chunkmeta
-
-// serverCheck checks chunkserver and removes chunkinfo of disconnnected servers
+// serverCheck checks chunkServer
+// set disconnected chunk servers to invalid and remove them from chunk location
+// then add replicas for chunks in replicasNeedList
 func (m *Master) serverCheck() error {
-	// detect dead servers
-	var deadServer []string
+	// detect and remove dead servers
 	now := time.Now()
 	for tuple := range m.chunkServerInfos.IterBuffered() {
 		cs := tuple.Val.(*ChunkServerInfo)
-		cs.RLock()
-		if cs.lastHeartbeat.Add(gfs.ServerTimeout).Before(now) {
-			deadServer = append(deadServer, tuple.Key)
-		}
-		cs.RUnlock()
-	}
-	// FIXME: TOCTOU may receive heartbeat after releasing chunkServerInfo RLock
-	// xjq: maybe acquire WLock at first and add a member in chunkServerInfo identifying if it is valid
-	// the word, "valid" means there is still a entrance in the relative map
-	// in heartbeat part, even we can get entrance from the map
-	// if it is not valid, then we will consider it is the first time for the chunk server to send heartbeat to master
-	// we can discuss... I just cannot come up with another idea... orz
+		cs.Lock()
+		if cs.valid && cs.lastHeartbeat.Add(gfs.ServerTimeout).Before(now) { // dead server
+			cs.valid = false // set to invalid
+			for h, v := range cs.chunks {
+				if v { // remove from chunk location
+					chunkMetadataFound, ok := m.chunkNamespace.Get(fmt.Sprintf("%d", h))
+					if !ok {
+						fmt.Printf("[masterServer]chunk%v doesn't exist:\n", h)
+						continue
+					}
+					chunkMetadata := chunkMetadataFound.(*ChunkMetadata)
 
-	// lyc: Remove should be replaced by "valid" flag.
-	// And we should consider the consistency of chunkserverinfo and chunkmeta.
-	// Chunk server may be added between remove and change chunkmeta.location.
-	// We can use chunkServerInfo.Lock to protect remove and change chunkmeta.location.
-	// But this may lead to dead lock.
+					chunkMetadata.Lock()
+					var newLocation []string
+					for _, l := range chunkMetadata.location {
+						if l != tuple.Key {
+							newLocation = append(newLocation, l)
+						}
+					}
+					chunkMetadata.location = newLocation
+					chunkMetadata.expire = time.Now()
 
-	// TODO: use Pop replace remove
-	// remove dead servers
-	for _, addr := range deadServer {
-		chunkServerInfoFound, ok := m.chunkServerInfos.Get(addr)
-		if !ok {
-			continue
-		}
-		chunkServerInfo := chunkServerInfoFound.(*ChunkServerInfo)
-		var handles []int64
-		chunkServerInfo.RLock()
-		for h, v := range chunkServerInfo.chunks {
-			if v {
-				handles = append(handles, h)
-			}
-		}
-		chunkServerInfo.RUnlock()
-		m.chunkServerInfos.Remove(addr)
-
-		// remove dead server from chunk meta and detect chunk need replica
-		for _, h := range handles {
-			chunkMetadataFound, ok := m.chunkNamespace.Get(fmt.Sprintf("%d", h))
-			if !ok {
-				continue
-			}
-			chunkMetadata := chunkMetadataFound.(*ChunkMetadata)
-
-			var newLocation []string
-			chunkMetadata.Lock()
-			for _, l := range chunkMetadata.location {
-				if l != addr {
-					newLocation = append(newLocation, l)
-				}
-			}
-			chunkMetadata.location = newLocation
-			chunkMetadata.expire = time.Now()
-			replicaNum := len(chunkMetadata.location)
-			chunkMetadata.Unlock()
-
-			if replicaNum < gfs.MinimumNumReplicas {
-				m.rnlLock.Lock()
-				m.replicasNeedList = append(m.replicasNeedList, h)
-				m.rnlLock.Unlock()
-				if replicaNum == 0 {
-					// TODO: handle error
+					// add chunk to replicasNeedList if replica is not enough
+					if len(chunkMetadata.location) < gfs.MinimumNumReplicas {
+						m.rnlLock.Lock()
+						m.replicasNeedList = append(m.replicasNeedList, h)
+						m.rnlLock.Unlock()
+						if len(chunkMetadata.location) == 0 {
+							fmt.Printf("[masterServer]chunk%v has no replica:\n", h)
+						}
+					}
+					chunkMetadata.Unlock()
 				}
 			}
 		}
+		cs.Unlock()
 	}
 
 	// add replicas
@@ -377,63 +369,44 @@ func (m *Master) serverCheck() error {
 
 // reReplicationAll adds replicas for all chunks to be replicated
 func (m *Master) reReplicationAll() error {
-	// clear satisfied chunk
 	m.rnlLock.Lock()
-	var newNeedList []int
-	for _, h := range m.replicasNeedList {
-		chunkMetadataFound, ok := m.chunkNamespace.Get(fmt.Sprintf("%d", h))
-		if !ok {
-			continue
-		}
-		// FIXME: is there need to check replica num here?
-		// Maybe we can just easily copy the slice while holding lock
-		// and check replica num when we holding the corresponding chunkMetadata as below
-
-		// lyc: It's right! Move replica num check down and delete replicasNeedList if success/satisfied/not exist.
-		// Check if satisfied again after success.
-		chunkMetadata := chunkMetadataFound.(*ChunkMetadata)
-		if len(chunkMetadata.location) < gfs.MinimumNumReplicas {
-			newNeedList = append(newNeedList, int(h))
-		}
-	}
-
-	// make unique
-	sort.Ints(newNeedList)
+	oldNeedList := m.replicasNeedList
 	m.replicasNeedList = make([]int64, 0)
-	for i, h := range newNeedList {
-		if i == 0 || h != newNeedList[i-1] {
-			m.replicasNeedList = append(m.replicasNeedList, int64(h))
-		}
-	}
-	needList := m.replicasNeedList
 	m.rnlLock.Unlock()
 
-	for _, h := range needList {
+	var newNeedList []int64
+	for _, h := range oldNeedList {
 		chunkMetadataFound, ok := m.chunkNamespace.Get(fmt.Sprintf("%d", h))
 		if !ok {
+			fmt.Printf("[masterServer]chunk%v doesn't exist:\n", h)
 			continue
 		}
 		chunkMetadata := chunkMetadataFound.(*ChunkMetadata)
 
 		// lock chunk so master will not grant lease during copy time
 		chunkMetadata.Lock()
-		// TODO: check replica num here?
-		// FIXME: I'm not quite sure about the expire check as follows
-		// expire is only relative with primary, I think
-		// so we will not handle chunks without a primary having not enough replicas err?
-		// BTW, primary will be selected and expire will be checked only when client ask for all replicas of a chunk
-		if chunkMetadata.expire.Before(time.Now()) {
-			m.reReplicationOne(h)
-			// TODO: handle error
+		if len(chunkMetadata.location) < gfs.MinimumNumReplicas {
+			if chunkMetadata.expire.Before(time.Now()) {
+				err := m.reReplicationOne(h, chunkMetadata)
+				if err != nil {
+					fmt.Println("[masterServer]reReplication error:", err)
+					newNeedList = append(newNeedList, h)
+				}
+			} else {
+				newNeedList = append(newNeedList, h)
+			}
 		}
 		chunkMetadata.Unlock()
 	}
 
+	m.rnlLock.Lock()
+	m.replicasNeedList = append(m.replicasNeedList, newNeedList...)
+	m.rnlLock.Unlock()
 	return nil
 }
 
 // reReplicationOne adds replica for one chunk, chunk meta should be locked in top caller
-func (m *Master) reReplicationOne(handle int64) error {
+func (m *Master) reReplicationOne(handle int64, chunk *ChunkMetadata) error {
 	// holding corresponding chunk metadata lock now
 	from, to, err := m.chooseReReplication(handle)
 	if err != nil {
@@ -453,59 +426,47 @@ func (m *Master) reReplicationOne(handle int64) error {
 		return err
 	}
 
-	// TODO: check dead lock for cs and cm lock
 	// add handle in chunk server info of to
 	chunkServerInfoFound, ok := m.chunkServerInfos.Get(to)
 	if !ok {
-		return fmt.Errorf("add chunk in removed server %s", to)
+		return fmt.Errorf("[masterServer]add chunk in removed server %s", to)
 	}
 	chunkServerInfo := chunkServerInfoFound.(*ChunkServerInfo)
-	// FIXME: deadlock will happen
-	// same problem as chooseReReplication part
 	chunkServerInfo.Lock()
+	if !chunkServerInfo.valid {
+		chunkServerInfo.Unlock()
+		return fmt.Errorf("[masterServer]add chunk in invalid server %s", to)
+	}
 	chunkServerInfo.chunks[handle] = true
 	chunkServerInfo.Unlock()
 
-	// add to in location of handle
-	chunkMetadataFound, ok := m.chunkNamespace.Get(fmt.Sprintf("%d", handle))
-	if !ok {
-		return fmt.Errorf("cannot find chunk %v", handle)
-	}
-	chunkMetadata := chunkMetadataFound.(*ChunkMetadata)
-	chunkMetadata.location = append(chunkMetadata.location, to)
+	// add to location of chunk
+	chunk.location = append(chunk.location, to)
 	return nil
 }
 
-// TODO: check dead lock for cs and cm lock, improve selection strategy
-// chooseReReplication chooses from chunk server and to chunk server for chunk to be replicated
+// TODO: improve selection strategy
+// chooseReReplication chooses reReplication src and dst
 func (m *Master) chooseReReplication(handle int64) (from, to string, err error) {
 	from = ""
 	to = ""
 	err = nil
 	for tuple := range m.chunkServerInfos.IterBuffered() {
 		cs := tuple.Val.(*ChunkServerInfo)
-		// FIXME: there will be a dead lock
-		// While holding chunkMetadata Lock, acquiring for all chunkServerInfo read lock is too dangerous
-		// heartbeat part will acquire chunkMetadata Lock while holding chunkServerInfo Lock
-		// For the first heartbeat, after adding to chunk server map, reReplica happens.
-		// if chunk server report itself holding the relative chunk handle, bang!!! dead lock
-		// for not first heartbeats, if the chunk handle needing to reReplica is in the leases to extend, dead lock will happen.
-		// xjq: solve by release chunkServerInfo lock in heartbeat
-		// TODO: is there any other chance for some goroutines holding chunkServerInfo lock with acquiring chunkMetaData lock?
-		// If so, deadlock will happen
-		// detect later... I don't want to see any go code today...
-		cs.RLock() // can be deleted
-		if cs.chunks[handle] {
-			from = tuple.Key
-		} else {
-			to = tuple.Key
+		cs.RLock()
+		if cs.valid {
+			if cs.chunks[handle] {
+				from = tuple.Key
+			} else {
+				to = tuple.Key
+			}
 		}
 		cs.RUnlock()
 		if from != "" && to != "" {
 			return
 		}
 	}
-	err = fmt.Errorf("No enough server for replica %v", handle)
+	err = fmt.Errorf("[masterServer]No enough server for replica %v", handle)
 	return
 }
 
