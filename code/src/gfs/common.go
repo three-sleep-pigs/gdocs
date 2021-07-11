@@ -37,4 +37,5 @@ const (
 	// client
 	ReplicaBufferTick 	= 500 * time.Millisecond
 	ClientTryTimeout = 2*LeaseExpire + 3*ServerTimeout
+	ReadEOF 			= 500
 )
