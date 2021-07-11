@@ -162,13 +162,16 @@ type ForwardDataArg struct {
 type ForwardDataReply struct {
 	ErrorCode int
 }
+
+// client -----> chunk server
+
 type ReadChunkArg struct {
 	Handle int64
 	Offset int64
-	Length int
+	Length int64
 }
 type ReadChunkReply struct {
 	Data      []byte
 	Length    int
-	ErrorCode int
+	ErrorCode int64
 }
