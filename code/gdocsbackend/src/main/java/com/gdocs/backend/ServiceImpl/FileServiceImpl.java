@@ -22,7 +22,7 @@ import java.util.Optional;
 
 @Service
 public class FileServiceImpl implements FileService {
-    private static final String DIR_PATH = "C:/Users/peach/Desktop/gdocs-three-sleepy-pigs/code/files/";
+    private static final String DIR_PATH = "C:\\Users\\peach\\Desktop\\gdocs-three-sleepy-pigs\\code\\files\\";
     @Autowired
     private GFileDao gFileDao;
 
@@ -43,7 +43,7 @@ public class FileServiceImpl implements FileService {
         if(optionalGFile.isPresent()){
             GFile gFile = optionalGFile.get();
             reply.setGFile(gFile);
-            File file = new File(DIR_PATH+id.toString()+".xml");
+            File file = new File(DIR_PATH+id+".xls");
             if (file.exists()) {
                 reply.setStatus(200);
                 reply.setFile(file);
@@ -67,32 +67,27 @@ public class FileServiceImpl implements FileService {
             GFile gFile = optionalGFile.get();
             if (gFile.getCreator().equals(username))
             {
-                if(gFileDao.deleteGFileById(id) == 1)
-                {
-                    File file = new File(DIR_PATH+id.toString()+".xml");
-                    if (file.exists()) {
-                        if (file.delete()) {
+                File file = new File(DIR_PATH+id.toString()+".xls");
+                if (file.exists()) {
+                    if (file.delete()) {
+                        if (gFileDao.deleteGFileById(id) == 1)
+                        {
                             return 200;//删除成功
-                        }
-                        else {
-                            return 401;//删除失败
                         }
                     }
                     else {
-                        return 402;//文件不存在
+                        return 401;//删除失败
                     }
                 }
                 else {
-                    return 401;//删除失败
+                    return 402;//文件不存在
                 }
             }
             else {
                 return 403;//无删除权限
             }
         }
-        else {
-            return 402;//文件不存在
-        }
+        return 402;//文件不存在
     }
 
     @Override
