@@ -23,4 +23,8 @@ const (
 	StoreMetaInterval   = 1 * time.Hour
 	MetaFileName        = "gfs-master.meta"
 	ServerTimeout       = 1 * time.Second
+
+	// chunk server
+	HeartbeatInterval   = 100 * time.Millisecond
+	GarbageCollectionInterval = 2 * time.Hour
 )
