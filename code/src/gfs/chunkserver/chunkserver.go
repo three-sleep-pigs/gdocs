@@ -385,7 +385,7 @@ func (cs *ChunkServer) RPCReadChunk(args gfs.ReadChunkArg, reply *gfs.ReadChunkR
 	reply.Data = make([]byte, args.Length)
 	err := cs.readChunk(args.Handle, args.Offset, reply.Data, &reply.Length)
 	if err == io.EOF {
-		reply.ErrorCode = 500
+		reply.ErrorCode = gfs.ReadEOF
 		return nil
 	}
 	return err

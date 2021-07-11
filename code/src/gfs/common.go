@@ -43,4 +43,5 @@ const (
 	Success = iota
 	UnknownError
 	AppendExceedChunkSize
+	ReadEOF
 )
