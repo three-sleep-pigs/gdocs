@@ -285,8 +285,6 @@ func (cs *ChunkServer) heartbeat() error {
 	var reply gfs.HeartbeatReply
 	err := gfs.Call(cs.master, "Master.RPCHeartbeat", args, &reply)
 	if err != nil {
-		// TODO: handle err
-		// leases fail to be extended
 		return err
 	}
 
