@@ -804,8 +804,6 @@ func (m *Master) RPCCreateFile(args gfs.CreateFileArg, reply *gfs.CreateFileRepl
 
 // RPCDeleteFile is called by client to delete a file
 func (m *Master) RPCDeleteFile(args gfs.DeleteFileArg, reply *gfs.DeleteFileReply) error {
-	// TODO: use Pop to replace Get+Remove
-	// xjq: have to check isDir before removing
 	parents := getParents(args.Path)
 	ok, fileMetadatas, err := m.acquireParentsRLocks(parents)
 	if !ok {
@@ -833,8 +831,6 @@ func (m *Master) RPCDeleteFile(args gfs.DeleteFileArg, reply *gfs.DeleteFileRepl
 
 // RPCRenameFile is called by client to rename a file
 func (m *Master) RPCRenameFile(args gfs.RenameFileArg, reply *gfs.RenameFileReply) error {
-	// TODO: use Pop to replace Get+Remove
-	// xjq: have to check isDir before removing
 	sourceParents := getParents(args.Source)
 	ok, sourceFileMetadatas, err := m.acquireParentsRLocks(sourceParents)
 	if !ok {

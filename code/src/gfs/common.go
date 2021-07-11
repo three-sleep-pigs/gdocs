@@ -9,6 +9,12 @@ type DataBufferID struct {
 	Time   int
 }
 
+type ChunkReplicaInfo struct {
+	Primary 	string
+	Expire 		time.Time
+	Secondaries []string
+}
+
 // system config
 const (
 	// master
@@ -27,4 +33,8 @@ const (
 	// chunk server
 	HeartbeatInterval   = 100 * time.Millisecond
 	GarbageCollectionInterval = 2 * time.Hour
+
+	// client
+	ReplicaBufferTick 	= 500 * time.Millisecond
+	ClientTryTimeout = 2*LeaseExpire + 3*ServerTimeout
 )
