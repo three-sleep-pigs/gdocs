@@ -472,39 +472,32 @@ func (m *Master) chooseReReplication(handle int64) (from, to string, err error) 
 
 // RPCHeartbeat is called by chunkserver to let the master know that a chunkserver is alive
 func (m *Master) RPCHeartbeat(args gfs.HeartbeatArg, reply *gfs.HeartbeatReply) error {
-	// new chunk server info
 	isFirst := true
-	chunkServerInfoNew := new(ChunkServerInfo)
-	chunkServerInfoNew.Lock()
-	chunkServerInfoNew.lastHeartbeat = time.Now()
-	chunkServerInfoNew.chunks = make(map[int64]bool)
-	chunkServerInfoNew.garbage = nil
-	chunkServerInfoNew.Unlock()
-	// check and set
-	ok := m.chunkServerInfos.SetIfAbsent(args.Address, chunkServerInfoNew)
+	// new chunk server info
+	chunkServerInfoNew := &ChunkServerInfo{lastHeartbeat: time.Now(), chunks: make(map[int64]bool),
+		garbage: nil, valid: true}
+	// no method to delete chunk server info so can not check ok
+	chunkServerInfoFound, ok:= m.chunkServerInfos.Get(args.Address)
 	if !ok {
-		// server exist
-		isFirst = false
-		// no method to delete chunk server info so can not check ok
-		chunkServerInfoFound, _ := m.chunkServerInfos.Get(args.Address)
+		m.chunkServerInfos.SetIfAbsent(args.Address, chunkServerInfoNew)
+	} else {
 		chunkServerInfoOld := chunkServerInfoFound.(*ChunkServerInfo)
 		chunkServerInfoOld.Lock()
-		// TODO: the entrance in map may be deleted, check it
-
-		// update time
-		chunkServerInfoOld.lastHeartbeat = time.Now()
-		// send garbage
-		reply.Garbage = chunkServerInfoOld.garbage
-		for _, v := range chunkServerInfoOld.garbage {
-			chunkServerInfoOld.chunks[v] = false
+		if !chunkServerInfoOld.valid {
+			isFirst = true
+			m.chunkServerInfos.SetIfAbsent(args.Address, chunkServerInfoNew)
+		} else {
+			// update time
+			chunkServerInfoOld.lastHeartbeat = time.Now()
+			// send garbage
+			reply.Garbage = chunkServerInfoOld.garbage
+			for _, v := range chunkServerInfoOld.garbage {
+				chunkServerInfoOld.chunks[v] = false
+			}
+			chunkServerInfoOld.garbage = make([]int64, 0)
+			chunkServerInfoOld.Unlock()
 		}
-		chunkServerInfoOld.garbage = make([]int64, 0)
-		chunkServerInfoOld.Unlock()
 	}
-	// FIXME: release chunkServerInfo Lock here to handle deadlock
-	// FIXME: there is no need for isFirst
-	// if no extend leases in the first heartbeat, no need for isFirst
-	// TODO: handle first heartbeat's set of leases to be extended
 	if isFirst {
 		// if is first heartbeat, let chunk server report itself
 		var r gfs.ReportSelfReply
@@ -522,8 +515,6 @@ func (m *Master) RPCHeartbeat(args gfs.HeartbeatArg, reply *gfs.HeartbeatReply) 
 			chunkMetadata := chunkMetadataFound.(*ChunkMetadata)
 			chunkMetadata.Lock()
 			if v.Checksum == chunkMetadata.checksum && v.Version == chunkMetadata.version {
-				// TODO: after adding address, the needed to reReplica slice may get changed
-				// slove: check at reReplica part. no need to worry
 				chunkMetadata.location = append(chunkMetadata.location, args.Address)
 			} else {
 				garbage = append(garbage, v.ChunkHandle)
@@ -583,7 +574,6 @@ func (m *Master) RPCGetReplicas(args gfs.GetReplicasArg, reply *gfs.GetReplicasR
 	}
 	chunkMetadata := chunkMetadataFound.(*ChunkMetadata)
 	chunkMetadata.Lock()
-	defer chunkMetadata.Unlock()
 	// check expire
 	if chunkMetadata.expire.Before(time.Now()) {
 		// expire is old
@@ -609,7 +599,8 @@ func (m *Master) RPCGetReplicas(args gfs.GetReplicasArg, reply *gfs.GetReplicasR
 				} else {
 					// add to garbage collection
 					// must exist no need to check ok
-					// FIXME: deadlock
+					// FIXME: deadlock solved
+					// by releasing chunkMetadata Lock before acquiring chunkServerInfo Lock for adding garbage
 					// chunkServerInfo and chunkMetadata
 					staleLock.Lock()
 					staleServers = append(staleServers, addr)
@@ -649,6 +640,7 @@ func (m *Master) RPCGetReplicas(args gfs.GetReplicasArg, reply *gfs.GetReplicasR
 			reply.Secondaries = append(reply.Secondaries, v)
 		}
 	}
+	chunkMetadata.Unlock()
 	// add garbage
 	for _, v := range staleServers {
 		csi, e := m.chunkServerInfos.Get(v)
@@ -657,8 +649,6 @@ func (m *Master) RPCGetReplicas(args gfs.GetReplicasArg, reply *gfs.GetReplicasR
 		}
 		chunkServerInfo := csi.(*ChunkServerInfo)
 		chunkServerInfo.Lock()
-		// TODO: should set false?
-		// I think should.
 		chunkServerInfo.chunks[args.Handle] = false
 		chunkServerInfo.garbage = append(chunkServerInfo.garbage, args.Handle)
 		chunkServerInfo.Unlock()
@@ -711,8 +701,7 @@ func (m *Master) RPCGetChunkHandle(args gfs.GetChunkHandleArg, reply *gfs.GetChu
 
 		reply.Handle, addrs, err = m.CreateChunk(fileMetadata, addrs)
 		if err != nil {
-			// TODO: solve some create chunks successfully while some fail
-			return fmt.Errorf("create chunk for path %s failed", args.Path)
+			return fmt.Errorf("create chunk for path %s failed in some chunk servers %s", args.Path, err)
 		}
 
 	} else {
@@ -766,7 +755,7 @@ func (m *Master) CreateChunk(fileMetadata *FileMetadata, addrs []string) (int64,
 	for _, v := range addrs {
 		var r gfs.CreateChunkReply
 
-		err := gfs.Call(v, "ChunkServer.RPCCreateChunk", gfs.CreateChunkArg{handle}, &r)
+		err := gfs.Call(v, "ChunkServer.RPCCreateChunk", gfs.CreateChunkArg{Handle: handle}, &r)
 		if err == nil {
 			chunkMetadata.location = append(chunkMetadata.location, v)
 			success = append(success, v)
@@ -816,6 +805,7 @@ func (m *Master) RPCCreateFile(args gfs.CreateFileArg, reply *gfs.CreateFileRepl
 // RPCDeleteFile is called by client to delete a file
 func (m *Master) RPCDeleteFile(args gfs.DeleteFileArg, reply *gfs.DeleteFileReply) error {
 	// TODO: use Pop to replace Get+Remove
+	// xjq: have to check isDir before removing
 	parents := getParents(args.Path)
 	ok, fileMetadatas, err := m.acquireParentsRLocks(parents)
 	if !ok {
@@ -844,6 +834,7 @@ func (m *Master) RPCDeleteFile(args gfs.DeleteFileArg, reply *gfs.DeleteFileRepl
 // RPCRenameFile is called by client to rename a file
 func (m *Master) RPCRenameFile(args gfs.RenameFileArg, reply *gfs.RenameFileReply) error {
 	// TODO: use Pop to replace Get+Remove
+	// xjq: have to check isDir before removing
 	sourceParents := getParents(args.Source)
 	ok, sourceFileMetadatas, err := m.acquireParentsRLocks(sourceParents)
 	if !ok {
@@ -862,6 +853,8 @@ func (m *Master) RPCRenameFile(args gfs.RenameFileArg, reply *gfs.RenameFileRepl
 		return err
 	}
 	sourceFileMetadata := sourceFileMetadataFound.(*FileMetadata)
+	sourceFileMetadata.RLock()
+	defer sourceFileMetadata.RUnlock()
 	if sourceFileMetadata.isDir {
 		err = fmt.Errorf("source path %s is not a file", args.Source)
 		return err
