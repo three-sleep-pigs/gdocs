@@ -6,3 +6,5 @@
 .idea/
 target/
 .DS_Store
+code/gdocsbackend/.mvn/
+code/gdocsbackend/.gitignore
