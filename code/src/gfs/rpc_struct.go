@@ -115,6 +115,7 @@ type MkdirReply struct {
 }
 
 // client -----> chunk server
+
 type WriteChunkArg struct {
 	DbID        DataBufferID
 	Offset      int64
@@ -141,6 +142,8 @@ type ApplyMutationArg struct {
 
 type ApplyMutationReply struct {
 }
+
+// chunk server -----> chunk server
 
 type ApplyCopyArg struct {
 	Handle  int64

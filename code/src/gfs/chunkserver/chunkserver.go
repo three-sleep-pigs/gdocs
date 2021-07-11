@@ -368,39 +368,38 @@ func (cs *ChunkServer) RPCReadChunk(args gfs.ReadChunkArg, reply *gfs.ReadChunkR
 	}
 	return err
 }
-// TODO: xjq from here
-// rpc called by master
-// send a whole chunk to an address given in args according to chunkhandle
+
+//TODO: xjq from here
+
+// RPCSendCopy called by master
+// send a whole chunk to an address given in args according to chunk handle
 func (cs *ChunkServer) RPCSendCopy(args gfs.SendCopyArg, reply *gfs.SendCopyReply) error {
-	cs.lock.RLock()
-	chunk, ok := cs.chunk[args.Handle]
+	// get from concurrent map
+	chunkInfoFound, ok := cs.chunks.Get(fmt.Sprintf("%d", args.Handle))
 	if ok == false {
-		cs.lock.RUnlock()
-		return fmt.Errorf("[chunkserver]chunk%v doesn't exist", args.Handle)
+		return fmt.Errorf("[chunk server] chunk%d doesn't exist", args.Handle)
 	}
-	if chunk.invalid {
-		cs.lock.RUnlock()
-		return fmt.Errorf("[chunkserver]chunk%v is abandoned", args.Handle)
+	chunkInfo := chunkInfoFound.(*ChunkInfo)
+	// get chunkInfo lock here to protect invalid
+	chunkInfo.lock.RLock()
+	defer chunkInfo.lock.RUnlock()
+	if chunkInfo.invalid {
+		return fmt.Errorf("[chunk server] chunk%d is abandoned", args.Handle)
 	}
-	cs.lock.RUnlock()
-	chunk.lock.RLock()
-	defer chunk.lock.RUnlock()
-	args1 := &gfs.ApplyCopyArg{
+	argsCopy := &gfs.ApplyCopyArg{
 		Handle:  args.Handle,
-		Version: chunk.version,
-		Data:    make([]byte, chunk.length),
+		Version: chunkInfo.version,
+		Data:    make([]byte, chunkInfo.length),
 	}
 	var length int
-	err := cs.readChunk(args.Handle, 0, args1.Data, &length)
+	err := cs.readChunk(args.Handle, 0, argsCopy.Data, &length)
 	if err != nil {
-		fmt.Println("[chunkserver]readchunk error", err)
-		return err
+		return fmt.Errorf("[chunk server] read chunk error %s", err)
 	}
 	var r gfs.ApplyCopyReply
-	err = gfs.Call(args.Address,"ChunkServer.RPCApplyCopy", args1, &r)
+	err = gfs.Call(args.Address,"ChunkServer.RPCApplyCopy", argsCopy, &r)
 	if err != nil {
-		fmt.Println("[chunkserver]applycopy rpc call error:", err)
-		return err
+		return fmt.Errorf("[chunk server]apply copy rpc call error: %s", err)
 	}
 	return nil
 }
@@ -423,7 +422,9 @@ func (cs *ChunkServer) writeChunk(handle int64, data []byte, offset int64) error
 	//determine if the size after writing is larger than MaxChunkSize,if so,return errors
 	len := offset + int64(len(data))
 	if len > gfs.MaxChunkSize {
-		log.Fatal("Maximum chunksize exceeded!")
+		// FIXME: we have no log now
+		//log.Fatal("Maximum chunk size exceeded!")
+		return fmt.Errorf("[chunk server] maxinum chunk size exceeded")
 	}
 
 	//open the chunk file
