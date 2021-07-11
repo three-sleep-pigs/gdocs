@@ -60,6 +60,16 @@ func (buf *downloadBuffer) Set(id gfs.DataBufferID, data []byte) {
 	buf.buffer[id] = downloadItem{data, time.Now().Add(buf.expire)}
 }
 
+func (buf *downloadBuffer) SetIfAbsent(id gfs.DataBufferID, data []byte) bool {
+	buf.Lock()
+	defer buf.Unlock()
+	_, ok := buf.buffer[id]
+	if !ok {
+		buf.buffer[id] = downloadItem{data, time.Now().Add(buf.expire)}
+	}
+	return !ok
+}
+
 func (buf *downloadBuffer) Get(id gfs.DataBufferID) ([]byte, error) {
 	buf.Lock()
 	defer buf.Unlock()
