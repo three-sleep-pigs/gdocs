@@ -391,8 +391,6 @@ func (cs *ChunkServer) RPCReadChunk(args gfs.ReadChunkArg, reply *gfs.ReadChunkR
 	return err
 }
 
-//TODO: xjq from here
-
 // RPCSendCopy called by master
 // send a whole chunk to an address given in args according to chunk handle
 func (cs *ChunkServer) RPCSendCopy(args gfs.SendCopyArg, reply *gfs.SendCopyReply) error {
