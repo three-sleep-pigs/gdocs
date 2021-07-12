@@ -207,10 +207,10 @@ func (m *Master) loadMeta() error {
 	defer gfs.DebugMsgToFile("load meta end", gfs.MASTER, m.address)
 	filename := path.Join(m.serverRoot, gfs.MetaFileName)
 	file, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	defer file.Close()
 	if err != nil {
 		return err
 	}
-	defer file.Close()
 
 	var meta PersistentMetadata
 	dec := gob.NewDecoder(file)
