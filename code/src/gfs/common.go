@@ -1,6 +1,7 @@
 package gfs
 
 import (
+	"os"
 	"time"
 )
 
@@ -13,6 +14,61 @@ type ChunkReplicaInfo struct {
 	Primary 	string
 	Expire 		time.Time
 	Secondaries []string
+}
+
+type TYPE int
+
+const (
+	CLIENT = 0
+	MASTER = 1
+	CHUNKSERVER = 2
+)
+
+const (
+	DEBUG = true
+	ClientDirectory	= "../debug/"
+	ClientDebugFilePrefix = "DEBUG_client_"
+	ClientMSGPrefix = "[CLIENT] "
+	MasterDirectory	= "../debug/"
+	MasterDebugFilePrefix = "DEBUG_master_"
+	MasterMSGPrefix = "[MASTER] "
+	ChunkServerDirectory	= "../debug/"
+	ChunkServerDebugFilePrefix = "DEBUG_chunk_server_"
+	ChunkServerMSGPrefix = "[CHUNKSERVER] "
+	DebugFileSuffix = ".txt"
+)
+
+
+
+func DebugMsgToFile(msg string, t TYPE, description string) {
+	if !DEBUG {
+		return
+	}
+	var openPath string
+	var toWrite string
+	switch t {
+	case CLIENT:
+		openPath = ClientDirectory + ClientDebugFilePrefix + description + DebugFileSuffix
+		toWrite = ClientMSGPrefix + msg + "\n"
+		break
+	case MASTER:
+		openPath = MasterDirectory + MasterDebugFilePrefix + description + DebugFileSuffix
+		toWrite = MasterMSGPrefix + msg + "\n"
+		break
+	case CHUNKSERVER:
+		openPath = ChunkServerDirectory + ChunkServerDebugFilePrefix + description + DebugFileSuffix
+		toWrite = ChunkServerMSGPrefix + msg + "\n"
+		break
+	default:
+		return
+	}
+	file, err := os.OpenFile(openPath, os.O_WRONLY | os.O_CREATE | os.O_APPEND , 0777)
+	defer file.Close()
+	if err != nil {
+		return
+	}
+
+	file.WriteString(toWrite)
 }
 
 // system config
