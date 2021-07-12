@@ -413,7 +413,6 @@ func (m *Master) reReplicationOne(handle int64, chunk *ChunkMetadata) error {
 		return err
 	}
 
-	// TODO: check code in chunk server, to may have handle, from may not, version checksum in from and to may be wrong, etc
 	var cr gfs.CreateChunkReply
 	err = gfs.Call(to, "ChunkServer.RPCCreateChunk", gfs.CreateChunkArg{Handle: handle}, &cr)
 	if err != nil {

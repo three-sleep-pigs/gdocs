@@ -285,8 +285,6 @@ func (cs *ChunkServer) heartbeat() error {
 	var reply gfs.HeartbeatReply
 	err := gfs.Call(cs.master, "Master.RPCHeartbeat", args, &reply)
 	if err != nil {
-		// TODO: handle err
-		// leases fail to be extended
 		return err
 	}
 
@@ -595,16 +593,16 @@ func (cs *ChunkServer) RPCAppendChunk(args gfs.AppendChunkArg, reply *gfs.Append
 	newLen := ck.length + int64(len(data)) //size after writing
 	offset := ck.length                    //write at the last of data
 
-	//if now chunk is full,return 400
+	//if now chunk is full, return AppendExceedChunkSize
 	if offset == gfs.MaxChunkSize {
-		reply.ErrorCode = 400
+		reply.ErrorCode = gfs.AppendExceedChunkSize
 		return err
 	}
-	//if newLen is bigger than MaxChunkSize,fill the chunk with 0,return 400
+	//if newLen is bigger than MaxChunkSize,fill the chunk with 0, return AppendExceedChunkSize
 	if newLen > gfs.MaxChunkSize {
 		data = []byte{0}
 		offset = gfs.MaxChunkSize - 1
-		reply.ErrorCode = 400
+		reply.ErrorCode = gfs.AppendExceedChunkSize
 	}
 	reply.Offset = offset
 
