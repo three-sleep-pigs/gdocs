@@ -56,8 +56,8 @@ type metadata struct {
 	checksum    int64
 }
 
-// newChunkServer create a new chunk server and return a pointer to it
-func newChunkServer(id string, master string, rootDir string) *ChunkServer {
+// NewChunkServer create a new chunk server and return a pointer to it
+func NewChunkServer(id string, master string, rootDir string) *ChunkServer {
 	cs := &ChunkServer{
 		id:       id,
 		shutdown: make(chan struct{}),

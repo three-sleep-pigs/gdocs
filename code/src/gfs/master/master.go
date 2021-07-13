@@ -698,7 +698,7 @@ func (m *Master) RPCGetChunkHandle(args gfs.GetChunkHandleArg, reply *gfs.GetChu
 			return e
 		}
 
-		reply.Handle, addrs, err = m.CreateChunk(fileMetadata, addrs)
+		reply.Handle, addrs, err = m.createChunk(fileMetadata, addrs)
 		if err != nil {
 			return fmt.Errorf("create chunk for path %s failed in some chunk servers %s", args.Path, err)
 		}
@@ -734,7 +734,7 @@ func (m *Master) chooseServers(num int) ([]string, error) {
 
 // CreateChunk creates a new chunk for path. servers for the chunk are denoted by addrs
 // returns the handle of the new chunk, and the servers that create the chunk successfully
-func (m *Master) CreateChunk(fileMetadata *FileMetadata, addrs []string) (int64, []string, error) {
+func (m *Master) createChunk(fileMetadata *FileMetadata, addrs []string) (int64, []string, error) {
 	m.nhLock.Lock()
 	handle := m.nextHandle
 	m.nextHandle++
