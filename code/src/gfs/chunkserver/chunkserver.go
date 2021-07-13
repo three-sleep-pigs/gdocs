@@ -71,7 +71,7 @@ func NewChunkServer(id string, master string, rootDir string) *ChunkServer {
 	// initial chunk metadata
 	_, err := os.Stat(rootDir) //check whether rootDir exists, if not, mkdir it
 	if err != nil {
-		err = os.Mkdir(rootDir, 0644)
+		err = os.Mkdir(rootDir, 0777)
 		if err != nil {
 			fmt.Println("[chunkServer]mkdir error:", err)
 			return nil
@@ -112,10 +112,7 @@ func NewChunkServer(id string, master string, rootDir string) *ChunkServer {
 			} else {
 				go func() {
 					rpcs.ServeConn(conn)
-					err := conn.Close()
-					if err != nil {
-						fmt.Println("[chunkServer]connect close error:", err)
-					}
+					conn.Close()
 				}()
 			}
 		}
@@ -187,7 +184,7 @@ func (cs *ChunkServer) Shutdown() {
 // loadMeta loads metadata of chunks from disk into chunk map, called by newChunkServer
 func (cs *ChunkServer) loadMeta() error {
 	filename := path.Join(cs.rootDir, "chunkServer.meta")
-	file, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	file, err := os.OpenFile(filename, os.O_RDONLY, 0777)
 	if err != nil {
 		return err
 	}
@@ -220,7 +217,7 @@ func (cs *ChunkServer) storeMeta() error {
 	defer cs.metaFileLock.Unlock()
 
 	filename := path.Join(cs.rootDir, "chunkServer.meta")
-	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
 	if err != nil {
 		return err
 	}
@@ -363,7 +360,7 @@ func (cs *ChunkServer) RPCCreateChunk(args gfs.CreateChunkArg, reply *gfs.Create
 		return fmt.Errorf("[chunkServer]create chunk error: chunk%v already exists", args.Handle)
 	}
 	filename := path.Join(cs.rootDir, fmt.Sprintf("chunk%v.chk", args.Handle))
-	_, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	_, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
 	return err
 }
 
@@ -476,7 +473,7 @@ func (cs *ChunkServer) writeChunk(handle int64, data []byte, offset int64) error
 	//open the chunk file
 	filename := path.Join(cs.rootDir, fmt.Sprintf("chunk%v.chk", handle))
 	// Consider writeChunk and deleteChunk happen concurrently, writeChunk shouldn't create file after os.Remove
-	file, err := os.OpenFile(filename, os.O_WRONLY, 0644)
+	file, err := os.OpenFile(filename, os.O_WRONLY, 0777)
 	if err != nil {
 		return fmt.Errorf("open file err %s", err)
 	}
@@ -654,4 +651,25 @@ func (cs *ChunkServer) RPCApplyMutation(args gfs.ApplyMutationArg, reply *gfs.Ap
 	//apply mutation
 	err = cs.sync(handle, ck, mutation)
 	return err
+}
+
+// RPCReportSelf reports all chunks the server holds
+func (cs *ChunkServer) RPCReportSelf(args gfs.ReportSelfArg, reply *gfs.ReportSelfReply) error {
+	var ret []gfs.RpcChunkMetadata
+	for tuple := range cs.chunks.IterBuffered() {
+		ck := tuple.Val.(*ChunkInfo)
+		ck.lock.RLock()
+		handle, e := strconv.ParseInt(tuple.Key, 10, 64)
+		if e != nil {
+			continue
+		}
+		ret = append(ret, gfs.RpcChunkMetadata{
+			ChunkHandle:  handle ,
+			Version:  ck.version,
+			Checksum: ck.checksum,
+		})
+		ck.lock.RUnlock()
+	}
+	reply.Chunks = ret
+	return nil
 }

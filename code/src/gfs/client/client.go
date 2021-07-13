@@ -3,9 +3,12 @@ package client
 import (
 	"../../gfs"
 	"../chunkserver"
+	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math/rand"
+	"net/http"
 	"time"
 )
 
@@ -15,12 +18,245 @@ type Client struct {
 	replicaBuffer *ReplicaBuffer
 }
 
-// NewClient returns a new gfs client.
-func NewClient(master string) *Client {
-	return &Client{
+// NewClient starts a new gfs client.
+func NewClient(addr string, master string) {
+	c := &Client{
 		master:   master,
 		replicaBuffer: newReplicaBuffer(master, gfs.ReplicaBufferTick),
 	}
+
+	http.HandleFunc("/create", c.CreateHandler)
+	http.HandleFunc("/delete", c.DeleteHandler)
+	http.HandleFunc("/rename", c.RenameHandler)
+	http.HandleFunc("/mkdir", c.MkdirHandler)
+	http.HandleFunc("/read", c.ReadHandler)
+	http.HandleFunc("/write", c.WriteHandler)
+	http.HandleFunc("/append", c.AppendHandler)
+
+	err := http.ListenAndServe(addr, nil)
+	fmt.Println("[client]server fail:", err)
+}
+
+func (c *Client) CreateHandler(w http.ResponseWriter, r *http.Request) {
+	var request CreateRequest
+	var response CreateResponse
+	body, _ := ioutil.ReadAll(r.Body)
+	err := json.Unmarshal(body, &request)
+
+	if err != nil {
+		fmt.Printf("[client]create parameter error: %s\n", body)
+		response.Success = false
+		response.Error = "wrong parameter"
+		res, _ := json.Marshal(response)
+		fmt.Fprintf(w, string(res))
+		return
+	}
+
+	err = c.Create(request.Path)
+	if err != nil {
+		fmt.Printf("[client]create file %s error: %v\n", request.Path, err)
+		response.Success = false
+		response.Error = err.Error()
+		res, _ := json.Marshal(response)
+		fmt.Fprintf(w, string(res))
+		return
+	}
+	response.Success = true
+	response.Error = ""
+	res, _ := json.Marshal(response)
+	fmt.Fprintf(w, string(res))
+}
+
+func (c *Client) DeleteHandler(w http.ResponseWriter, r *http.Request) {
+	var request DeleteRequest
+	var response DeleteResponse
+	body, _ := ioutil.ReadAll(r.Body)
+	err := json.Unmarshal(body, &request)
+
+	if err != nil {
+		fmt.Printf("[client]delete parameter error: %s\n", body)
+		response.Success = false
+		response.Error = "wrong parameter"
+		res, _ := json.Marshal(response)
+		fmt.Fprintf(w, string(res))
+		return
+	}
+
+	err = c.Delete(request.Path)
+	if err != nil {
+		fmt.Printf("[client]delete file %s error: %v\n", request.Path, err)
+		response.Success = false
+		response.Error = err.Error()
+		res, _ := json.Marshal(response)
+		fmt.Fprintf(w, string(res))
+		return
+	}
+	response.Success = true
+	response.Error = ""
+	res, _ := json.Marshal(response)
+	fmt.Fprintf(w, string(res))
+}
+
+func (c *Client) RenameHandler(w http.ResponseWriter, r *http.Request) {
+	var request RenameRequest
+	var response RenameResponse
+	body, _ := ioutil.ReadAll(r.Body)
+	err := json.Unmarshal(body, &request)
+
+	if err != nil {
+		fmt.Printf("[client]rename parameter error: %s\n", body)
+		response.Success = false
+		response.Error = "wrong parameter"
+		res, _ := json.Marshal(response)
+		fmt.Fprintf(w, string(res))
+		return
+	}
+
+	err = c.Rename(request.Source, request.Target)
+	if err != nil {
+		fmt.Printf("[client]rename file %s to %s error: %v\n", request.Source, request.Target, err)
+		response.Success = false
+		response.Error = err.Error()
+		res, _ := json.Marshal(response)
+		fmt.Fprintf(w, string(res))
+		return
+	}
+	response.Success = true
+	response.Error = ""
+	res, _ := json.Marshal(response)
+	fmt.Fprintf(w, string(res))
+}
+
+func (c *Client) MkdirHandler(w http.ResponseWriter, r *http.Request) {
+	var request MkdirRequest
+	var response MkdirResponse
+	body, _ := ioutil.ReadAll(r.Body)
+	err := json.Unmarshal(body, &request)
+
+	if err != nil {
+		fmt.Printf("[client]mkdir parameter error: %s\n", body)
+		response.Success = false
+		response.Error = "wrong parameter"
+		res, _ := json.Marshal(response)
+		fmt.Fprintf(w, string(res))
+		return
+	}
+
+	err = c.Mkdir(request.Path)
+	if err != nil {
+		fmt.Printf("[client]make directory %s error: %v\n", request.Path, err)
+		response.Success = false
+		response.Error = err.Error()
+		res, _ := json.Marshal(response)
+		fmt.Fprintf(w, string(res))
+		return
+	}
+	response.Success = true
+	response.Error = ""
+	res, _ := json.Marshal(response)
+	fmt.Fprintf(w, string(res))
+}
+
+func (c *Client) ReadHandler(w http.ResponseWriter, r *http.Request) {
+	var request ReadRequest
+	var response ReadResponse
+	body, _ := ioutil.ReadAll(r.Body)
+	err := json.Unmarshal(body, &request)
+
+	if err != nil {
+		fmt.Printf("[client]read parameter error: %s\n", body)
+		response.Success = false
+		response.Error = "wrong parameter"
+		response.Data = ""
+		res, _ := json.Marshal(response)
+		fmt.Fprintf(w, string(res))
+		return
+	}
+
+	data := make([]byte, request.Length)
+	n, e := c.Read(request.Path, int64(request.Offset), data)
+	if e != nil && e != io.EOF {
+		fmt.Printf("[client]read file %s offset %d length %d error: %v\n", request.Path, request.Offset, request.Length, e)
+		response.Success = false
+		response.Error = e.Error()
+		response.Data = ""
+		res, _ := json.Marshal(response)
+		fmt.Fprintf(w, string(res))
+		return
+	}
+	response.Success = true
+	response.Error = ""
+	response.Data = string(data[:n])
+	res, _ := json.Marshal(response)
+	fmt.Fprintf(w, string(res))
+}
+
+func (c *Client) WriteHandler(w http.ResponseWriter, r *http.Request) {
+	var request WriteRequest
+	var response WriteResponse
+	body, _ := ioutil.ReadAll(r.Body)
+	err := json.Unmarshal(body, &request)
+
+	if err != nil {
+		fmt.Printf("[client]write parameter error: %s\n", body)
+		response.Success = false
+		response.Error = "wrong parameter"
+		response.Size = 0
+		res, _ := json.Marshal(response)
+		fmt.Fprintf(w, string(res))
+		return
+	}
+
+	data := []byte(request.Data)
+	n, e := c.Write(request.Path, int64(request.Offset), data)
+	if e != nil {
+		fmt.Printf("[client]write file %s offset %d size %d error: %v\n", request.Path, request.Offset, n, e)
+		response.Success = false
+		response.Error = e.Error()
+		response.Size = n
+		res, _ := json.Marshal(response)
+		fmt.Fprintf(w, string(res))
+		return
+	}
+	response.Success = true
+	response.Error = ""
+	response.Size = n
+	res, _ := json.Marshal(response)
+	fmt.Fprintf(w, string(res))
+}
+
+func (c *Client) AppendHandler(w http.ResponseWriter, r *http.Request) {
+	var request AppendRequest
+	var response AppendResponse
+	body, _ := ioutil.ReadAll(r.Body)
+	err := json.Unmarshal(body, &request)
+
+	if err != nil {
+		fmt.Printf("[client]append parameter error: %s\n", body)
+		response.Success = false
+		response.Error = "wrong parameter"
+		response.Offset = -1
+		res, _ := json.Marshal(response)
+		fmt.Fprintf(w, string(res))
+		return
+	}
+
+	data := []byte(request.Data)
+	offset, e := c.Append(request.Path, data)
+	if e != nil {
+		fmt.Printf("[client]append file %s error: %v\n", request.Path, e)
+		response.Success = false
+		response.Error = e.Error()
+		response.Offset = -1
+		res, _ := json.Marshal(response)
+		fmt.Fprintf(w, string(res))
+		return
+	}
+	response.Success = true
+	response.Error = ""
+	response.Offset = int(offset)
+	res, _ := json.Marshal(response)
+	fmt.Fprintf(w, string(res))
 }
 
 // Create is a client API, creates a file

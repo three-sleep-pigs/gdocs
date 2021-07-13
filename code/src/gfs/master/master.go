@@ -116,7 +116,7 @@ func NewAndServe(address string, serverRoot string) *Master {
 	// initial metadata
 	_, err := os.Stat(serverRoot) //check whether rootDir exists, if not, mkdir it
 	if err != nil {
-		err = os.Mkdir(serverRoot, 0644)
+		err = os.Mkdir(serverRoot, 0777)
 		if err != nil {
 			fmt.Println("[masterServer]mkdir error:", err)
 			return nil
@@ -153,10 +153,7 @@ func NewAndServe(address string, serverRoot string) *Master {
 			if err == nil {
 				go func() {
 					rpcs.ServeConn(conn)
-					err := conn.Close()
-					if err != nil {
-						fmt.Println("[masterServer]connect close error:", err)
-					}
+					conn.Close()
 				}()
 			} else {
 				if !m.dead {
@@ -204,7 +201,7 @@ func NewAndServe(address string, serverRoot string) *Master {
 // loadMeta loads metadata from disk
 func (m *Master) loadMeta() error {
 	filename := path.Join(m.serverRoot, gfs.MetaFileName)
-	file, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	file, err := os.OpenFile(filename, os.O_RDONLY, 0777)
 	if err != nil {
 		return err
 	}
@@ -250,7 +247,7 @@ func (m *Master) storeMeta() error {
 	defer m.metaFileLock.Unlock()
 
 	filename := path.Join(m.serverRoot, gfs.MetaFileName)
-	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
 	if err != nil {
 		return err
 	}

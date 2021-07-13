@@ -2,7 +2,7 @@ package gfs
 
 import "time"
 
-type rpcChunkMetadata struct {
+type RpcChunkMetadata struct {
 	ChunkHandle int64
 
 	Version  int64
@@ -29,7 +29,7 @@ type ReportSelfArg struct {
 }
 
 type ReportSelfReply struct {
-	Chunks []rpcChunkMetadata
+	Chunks []RpcChunkMetadata
 }
 
 type CheckVersionArg struct {

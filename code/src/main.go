@@ -2,6 +2,7 @@ package main
 
 import (
 	"./gfs/chunkserver"
+	"./gfs/client"
 	"./gfs/master"
 	"bufio"
 	"fmt"
@@ -10,9 +11,9 @@ import (
 
 func printUsage() {
 	fmt.Println("Usage:")
-	fmt.Println("master <addr> <root path>")
-	fmt.Println("chunkserver <addr> <root path> <master addr>")
-	fmt.Println("client <addr> <root path> <master addr>")
+	fmt.Println("master      <addr(:port)> <root path>")
+	fmt.Println("chunkserver <addr(:port)> <root path> <master addr(:port)>")
+	fmt.Println("client      <addr(127.0.0.1:port)>    <master addr(:port)>")
 	fmt.Println()
 }
 
@@ -61,7 +62,12 @@ func runChunkServer() {
 }
 
 func runClient() {
-
+	if len(os.Args) < 4 {
+		printUsage()
+		return
+	}
+	fmt.Println("print Ctrl+C to shut down client")
+	client.NewClient(os.Args[2], os.Args[3])
 }
 
 func main() {
