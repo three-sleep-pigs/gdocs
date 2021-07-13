@@ -42,14 +42,12 @@ func newReplicaBuffer(ms string, tick time.Duration) *ReplicaBuffer {
 }
 
 func (buf *ReplicaBuffer) Get(handle int64) (*gfs.ChunkReplicaInfo, error) {
-	buf.RLock()
-	info, ok := buf.buffer[handle]
-	if ok {
-		buf.RUnlock()
-		return info, nil
-	}
 	buf.Lock()
 	defer buf.Unlock()
+	info, ok := buf.buffer[handle]
+	if ok {
+		return info, nil
+	}
 	// ask master to send one
 	var l gfs.GetReplicasReply
 	err := gfs.Call(buf.master, "Master.RPCGetReplicas", gfs.GetReplicasArg{Handle: handle}, &l)

@@ -2,7 +2,7 @@ package gfs
 
 import "time"
 
-type rpcChunkMetadata struct {
+type RpcChunkMetadata struct {
 	ChunkHandle int64
 
 	Version  int64
@@ -29,7 +29,7 @@ type ReportSelfArg struct {
 }
 
 type ReportSelfReply struct {
-	Chunks []rpcChunkMetadata
+	Chunks []RpcChunkMetadata
 }
 
 type CheckVersionArg struct {
@@ -125,6 +125,17 @@ type WriteChunkArg struct {
 type WriteChunkReply struct {
 }
 
+type ReadChunkArg struct {
+	Handle int64
+	Offset int64
+	Length int64
+}
+type ReadChunkReply struct {
+	Data      []byte
+	Length    int
+	ErrorCode int64
+}
+
 type AppendChunkArg struct {
 	DbID        DataBufferID
 	Secondaries []string
@@ -133,14 +144,6 @@ type AppendChunkArg struct {
 type AppendChunkReply struct {
 	Offset    int64
 	ErrorCode int
-}
-
-type ApplyMutationArg struct {
-	DbID   DataBufferID
-	Offset int64
-}
-
-type ApplyMutationReply struct {
 }
 
 // chunk server -----> chunk server
@@ -163,15 +166,10 @@ type ForwardDataReply struct {
 	ErrorCode int
 }
 
-// client -----> chunk server
-
-type ReadChunkArg struct {
-	Handle int64
+type ApplyMutationArg struct {
+	DbID   DataBufferID
 	Offset int64
-	Length int64
 }
-type ReadChunkReply struct {
-	Data      []byte
-	Length    int
-	ErrorCode int64
+
+type ApplyMutationReply struct {
 }
