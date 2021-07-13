@@ -11,9 +11,9 @@ import (
 
 func printUsage() {
 	fmt.Println("Usage:")
-	fmt.Println("master      <addr(:port)> <root path>")
-	fmt.Println("chunkserver <addr(:port)> <root path> <master addr(:port)>")
-	fmt.Println("client      <addr(127.0.0.1:port)>    <master addr(:port)>")
+	fmt.Println("master      <addr> <root path>")
+	fmt.Println("chunkserver <addr> <root path> <master addr>")
+	fmt.Println("client      <addr> <master addr>")
 	fmt.Println()
 }
 
@@ -67,7 +67,7 @@ func runClient() {
 		return
 	}
 	fmt.Println("print Ctrl+C to shut down client")
-	client.NewClient(os.Args[2], os.Args[3])
+	client.NewClient(os.Args[3], os.Args[2])
 }
 
 func main() {
