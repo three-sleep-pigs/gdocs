@@ -26,7 +26,7 @@ const (
 )
 
 const (
-	DEBUG = true
+	DEBUG = false
 	ClientDirectory	= "../debug/"
 	ClientDebugFilePrefix = "DEBUG_client_"
 	ClientMSGPrefix = "[CLIENT] "
@@ -38,8 +38,6 @@ const (
 	ChunkServerMSGPrefix = "[CHUNKSERVER] "
 	DebugFileSuffix = ".txt"
 )
-
-
 
 func DebugMsgToFile(msg string, t TYPE, description string) {
 	if !DEBUG {

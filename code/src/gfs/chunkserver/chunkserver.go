@@ -56,8 +56,8 @@ type metadata struct {
 	checksum    int64
 }
 
-// newChunkServer create a new chunk server and return a pointer to it
-func newChunkServer(id string, master string, rootDir string) *ChunkServer {
+// NewChunkServer create a new chunk server and return a pointer to it
+func NewChunkServer(id string, master string, rootDir string) *ChunkServer {
 	cs := &ChunkServer{
 		id:       id,
 		shutdown: make(chan struct{}),
@@ -71,7 +71,7 @@ func newChunkServer(id string, master string, rootDir string) *ChunkServer {
 	// initial chunk metadata
 	_, err := os.Stat(rootDir) //check whether rootDir exists, if not, mkdir it
 	if err != nil {
-		err = os.Mkdir(rootDir, 0644)
+		err = os.Mkdir(rootDir, 0777)
 		if err != nil {
 			gfs.DebugMsgToFile(fmt.Sprintf("newChunkServer mkdir error <%s>", err), gfs.CHUNKSERVER, cs.id)
 			return nil
@@ -80,7 +80,6 @@ func newChunkServer(id string, master string, rootDir string) *ChunkServer {
 	err = cs.loadMeta()
 	if err != nil {
 		gfs.DebugMsgToFile(fmt.Sprintf("newChunkServer loadMeta error <%s>", err), gfs.CHUNKSERVER, cs.id)
-		return nil
 	}
 
 	// register rpc server
@@ -115,7 +114,7 @@ func newChunkServer(id string, master string, rootDir string) *ChunkServer {
 					rpcs.ServeConn(conn)
 					err := conn.Close()
 					if err != nil {
-						gfs.DebugMsgToFile(fmt.Sprintf("newChunkServer connect close error <%s>", err), gfs.CHUNKSERVER, cs.id)
+						//gfs.DebugMsgToFile(fmt.Sprintf("newChunkServer connect close error <%s>", err), gfs.CHUNKSERVER, cs.id)
 					}
 				}()
 			}
@@ -193,7 +192,7 @@ func (cs *ChunkServer) loadMeta() error {
 	gfs.DebugMsgToFile("chunk server load meta start", gfs.CHUNKSERVER, cs.id)
 	defer gfs.DebugMsgToFile("chunk server load meta end", gfs.CHUNKSERVER, cs.id)
 	filename := path.Join(cs.rootDir, "chunkServer.meta")
-	file, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	file, err := os.OpenFile(filename, os.O_RDONLY, 0777)
 	if err != nil {
 		gfs.DebugMsgToFile(fmt.Sprintf("chunk server load meta error <%s>", err), gfs.CHUNKSERVER, cs.id)
 		return err
@@ -230,7 +229,7 @@ func (cs *ChunkServer) storeMeta() error {
 	defer cs.metaFileLock.Unlock()
 
 	filename := path.Join(cs.rootDir, "chunkServer.meta")
-	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
 	if err != nil {
 		gfs.DebugMsgToFile(fmt.Sprintf("chunk server load meta error <%s>", err), gfs.CHUNKSERVER, cs.id)
 		return err
@@ -311,6 +310,30 @@ func (cs *ChunkServer) heartbeat() error {
 	return nil
 }
 
+// RPCReportSelf reports all chunks the server holds
+func (cs *ChunkServer) RPCReportSelf(args gfs.ReportSelfArg, reply *gfs.ReportSelfReply) error {
+	gfs.DebugMsgToFile("RPCReportSelf start", gfs.CHUNKSERVER, cs.id)
+	defer gfs.DebugMsgToFile("RPCReportSelf end", gfs.CHUNKSERVER, cs.id)
+	var ret []gfs.RpcChunkMetadata
+	for tuple := range cs.chunks.IterBuffered() {
+		ck := tuple.Val.(*ChunkInfo)
+		ck.lock.RLock()
+		handle, e := strconv.ParseInt(tuple.Key, 10, 64)
+		if e != nil {
+			gfs.DebugMsgToFile("RPCReportSelf parse int error", gfs.CHUNKSERVER, cs.id)
+			continue
+		}
+		ret = append(ret, gfs.RpcChunkMetadata{
+			ChunkHandle:  handle ,
+			Version:  ck.version,
+			Checksum: ck.checksum,
+		})
+		ck.lock.RUnlock()
+	}
+	reply.Chunks = ret
+	return nil
+}
+
 // deleteChunk deletes a chunk, called by garbageCollection
 func (cs *ChunkServer) deleteChunk(handle int64) error {
 	gfs.DebugMsgToFile("deleteChunk start", gfs.CHUNKSERVER, cs.id)
@@ -349,6 +372,7 @@ func (cs *ChunkServer) RPCCheckVersion(args gfs.CheckVersionArg, reply *gfs.Chec
 		chunk.version++      // not stale: update version
 		reply.Stale = false
 	} else {
+		gfs.DebugMsgToFile(fmt.Sprintf("RPCCheckVersion set chunk %d invalid", args.Handle), gfs.CHUNKSERVER, cs.id)
 		chunk.invalid = true // stale: set invalid bit
 		reply.Stale = true
 	}
@@ -389,11 +413,14 @@ func (cs *ChunkServer) RPCCreateChunk(args gfs.CreateChunkArg, reply *gfs.Create
 	chunk.length = 0
 	ok := cs.chunks.SetIfAbsent(fmt.Sprintf("%d", args.Handle), chunk)
 	if !ok {
-		gfs.DebugMsgToFile(fmt.Sprintf("RPCCreateChunk error <create chunk error: chunk%v already exists>"), gfs.CHUNKSERVER, cs.id)
+		gfs.DebugMsgToFile(fmt.Sprintf("RPCCreateChunk error <create chunk error: chunk%v already exists>", args.Handle), gfs.CHUNKSERVER, cs.id)
 		return fmt.Errorf("[chunkServer]create chunk error: chunk%v already exists", args.Handle)
 	}
 	filename := path.Join(cs.rootDir, fmt.Sprintf("chunk%v.chk", args.Handle))
-	_, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	_, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
+	if err != nil {
+		gfs.DebugMsgToFile(fmt.Sprintf("RPCCreateChunk error <%s>", err), gfs.CHUNKSERVER, cs.id)
+	}
 	return err
 }
 
@@ -527,7 +554,7 @@ func (cs *ChunkServer) writeChunk(handle int64, data []byte, offset int64) error
 	//open the chunk file
 	filename := path.Join(cs.rootDir, fmt.Sprintf("chunk%v.chk", handle))
 	// Consider writeChunk and deleteChunk happen concurrently, writeChunk shouldn't create file after os.Remove
-	file, err := os.OpenFile(filename, os.O_WRONLY, 0644)
+	file, err := os.OpenFile(filename, os.O_WRONLY, 0777)
 	if err != nil {
 		gfs.DebugMsgToFile(fmt.Sprintf("readChunk error <open file err %s>", err), gfs.CHUNKSERVER, cs.id)
 		return fmt.Errorf("open file err %s", err)

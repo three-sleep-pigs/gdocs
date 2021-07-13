@@ -75,7 +75,7 @@ func (buf *downloadBuffer) Get(id gfs.DataBufferID) ([]byte, error) {
 	defer buf.Unlock()
 	item, ok := buf.buffer[id]
 	if !ok {
-		return nil, fmt.Errorf("DataID %v not found in download buffer.", id)
+		return nil, fmt.Errorf("dataID %v not found in download buffer", id)
 	}
 	item.expire = time.Now().Add(buf.expire) // touch
 	return item.data, nil
@@ -87,7 +87,7 @@ func (buf *downloadBuffer) Fetch(id gfs.DataBufferID) ([]byte, error) {
 
 	item, ok := buf.buffer[id]
 	if !ok {
-		return nil, fmt.Errorf("DataID %v not found in download buffer.", id)
+		return nil, fmt.Errorf("dataID %v not found in download buffer", id)
 	}
 
 	delete(buf.buffer, id)

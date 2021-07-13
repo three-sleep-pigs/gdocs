@@ -155,7 +155,7 @@ func NewAndServe(address string, serverRoot string) *Master {
 					rpcs.ServeConn(conn)
 					err := conn.Close()
 					if err != nil {
-						gfs.DebugMsgToFile(fmt.Sprintf("connect close error <%s>", err), gfs.MASTER, m.address)
+						//gfs.DebugMsgToFile(fmt.Sprintf("connect close error <%s>", err), gfs.MASTER, m.address)
 					}
 				}()
 			} else {
@@ -207,10 +207,10 @@ func (m *Master) loadMeta() error {
 	defer gfs.DebugMsgToFile("load meta end", gfs.MASTER, m.address)
 	filename := path.Join(m.serverRoot, gfs.MetaFileName)
 	file, err := os.OpenFile(filename, os.O_RDONLY, 0644)
-	defer file.Close()
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 
 	var meta PersistentMetadata
 	dec := gob.NewDecoder(file)
@@ -494,8 +494,8 @@ func (m *Master) chooseReReplication(handle int64) (from, to string, err error) 
 
 // RPCHeartbeat is called by chunkserver to let the master know that a chunkserver is alive
 func (m *Master) RPCHeartbeat(args gfs.HeartbeatArg, reply *gfs.HeartbeatReply) error {
-	gfs.DebugMsgToFile(fmt.Sprintf("RPCHeartbeat chunk server addreee <%s> start", args.Address), gfs.MASTER, m.address)
-	defer gfs.DebugMsgToFile(fmt.Sprintf("RPCHeartbeat chunk server addreee <%s> end", args.Address), gfs.MASTER, m.address)
+	gfs.DebugMsgToFile(fmt.Sprintf("RPCHeartbeat chunk server address <%s> start", args.Address), gfs.MASTER, m.address)
+	defer gfs.DebugMsgToFile(fmt.Sprintf("RPCHeartbeat chunk server address <%s> end", args.Address), gfs.MASTER, m.address)
 	isFirst := true
 	// new chunk server info
 	chunkServerInfoNew := &ChunkServerInfo{lastHeartbeat: time.Now(), chunks: make(map[int64]bool),
@@ -510,6 +510,7 @@ func (m *Master) RPCHeartbeat(args gfs.HeartbeatArg, reply *gfs.HeartbeatReply) 
 		if !chunkServerInfoOld.valid {
 			isFirst = true
 			m.chunkServerInfos.SetIfAbsent(args.Address, chunkServerInfoNew)
+			chunkServerInfoOld.Unlock()
 		} else {
 			// update time
 			chunkServerInfoOld.lastHeartbeat = time.Now()
@@ -660,6 +661,7 @@ func (m *Master) RPCGetReplicas(args gfs.GetReplicasArg, reply *gfs.GetReplicasR
 				chunkMetadata.version--
 				err := fmt.Errorf("no replica of %v", args.Handle)
 				gfs.DebugMsgToFile(fmt.Sprintf("RPCGetReplicas chunk handle <%d> error <%s>", args.Handle, err), gfs.MASTER, m.address)
+				chunkMetadata.Unlock()
 				return err
 			}
 		}
@@ -745,7 +747,7 @@ func (m *Master) RPCGetChunkHandle(args gfs.GetChunkHandleArg, reply *gfs.GetChu
 			return e
 		}
 
-		reply.Handle, addrs, err = m.CreateChunk(fileMetadata, addrs)
+		reply.Handle, addrs, err = m.createChunk(fileMetadata, addrs)
 		if err != nil {
 			err = fmt.Errorf("create chunk for path %s failed in some chunk servers %s", args.Path, err)
 			gfs.DebugMsgToFile(fmt.Sprintf("RPCGetChunkHandle path <%s> index <%d> error <%s>", args.Path, args.Index, err), gfs.MASTER, m.address)
@@ -790,7 +792,7 @@ func (m *Master) chooseServers(num int) ([]string, error) {
 
 // CreateChunk creates a new chunk for path. servers for the chunk are denoted by addrs
 // returns the handle of the new chunk, and the servers that create the chunk successfully
-func (m *Master) CreateChunk(fileMetadata *FileMetadata, addrs []string) (int64, []string, error) {
+func (m *Master) createChunk(fileMetadata *FileMetadata, addrs []string) (int64, []string, error) {
 	gfs.DebugMsgToFile(fmt.Sprintf("CreateChunk start"), gfs.MASTER, m.address)
 	defer gfs.DebugMsgToFile(fmt.Sprintf("CreateChunk end"), gfs.MASTER, m.address)
 	m.nhLock.Lock()
@@ -800,6 +802,7 @@ func (m *Master) CreateChunk(fileMetadata *FileMetadata, addrs []string) (int64,
 	// update file info
 	fileMetadata.chunkHandles = append(fileMetadata.chunkHandles, handle)
 	chunkMetadata := new(ChunkMetadata)
+	// TODO: deadlock
 	chunkMetadata.Lock()
 	defer chunkMetadata.Unlock()
 	chunkMetadata.version = 0
