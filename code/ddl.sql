@@ -16,6 +16,7 @@ create table gfile
 	id 				integer not null auto_increment,
     filename		varchar(30) not null,
     creator			varchar(30) not null,
+    deleted			boolean not null,
     recent			timestamp not null default current_timestamp, 
     primary key (id),
     foreign key (creator) references guser(username) on delete cascade

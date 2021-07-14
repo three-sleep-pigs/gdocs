@@ -1,22 +1,24 @@
 package com.gdocs.backend.ServiceImpl;
 
+import com.alibaba.fastjson.JSONObject;
 import com.gdocs.backend.Dao.EditDao;
 import com.gdocs.backend.Dao.GFileDao;
 import com.gdocs.backend.Entity.Edit;
 import com.gdocs.backend.Entity.GFile;
-import com.gdocs.backend.Reply.FileReply;
 import com.gdocs.backend.Service.FileService;
-import com.gdocs.backend.Util.CellData;
-import com.gdocs.backend.Util.CellType;
-import com.gdocs.backend.Util.Sheet;
+import com.gdocs.backend.Util.*;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Service;
 
 import java.io.*;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.*;
+
+import static com.gdocs.backend.Util.Constant.BASIC_URL;
+import static com.gdocs.backend.Util.Constant.CREATE_URL;
 
 @Service
 public class FileServiceImpl implements FileService {
@@ -34,41 +36,41 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
-    public FileReply getFileByID(Integer id)
+    public List<GFile> getBin(String creator)
     {
-        FileReply reply = new FileReply();
-        List<Sheet> sheets = new ArrayList<>();
-        Sheet sheet = new Sheet();
-        Map<Integer,Map<Integer,CellData>> CellData = new HashMap<>();
-        CellType cellType = new CellType();
-        Optional<GFile> optionalGFile = gFileDao.getGFileById(id);
-        if(optionalGFile.isPresent()){
-            GFile gFile = optionalGFile.get();
-            sheet.setName(gFile.getFilename());
-            sheet.setIndex(gFile.getId().toString());
-            sheet.setOrder(0);
-            sheet.setStatus(1);
-            ArrayList<String> arrayList = new ArrayList<>();
+        return gFileDao.getBin(creator);
+    }
+
+    @Override
+    public Integer addFile(String username,String filename)
+    {
+        GFile gFile = new GFile();
+        gFile.setFilename(filename);
+        gFile.setCreator(username);
+        gFile.setDeleted(false);
+        gFile.setRecent(Timestamp.valueOf(LocalDateTime.now()));
+        if (gFileDao.saveFile(gFile) != null)
+        {
+            JSONObject jsonObject = new JSONObject();
+            jsonObject.put("Path",gFile.getId().toString()+".txt");
+            String s;
             try {
-                FileReader reader = new FileReader(DIR_PATH + id + ".txt");
-                BufferedReader bufferedReader = new BufferedReader(reader);
-                String string;
-                while ((string = bufferedReader.readLine()) != null) {
-                    arrayList.add(string);
-                }
-                bufferedReader.close();
-                reader.close();
+                s = HTTPUtil.HttpRestClient(BASIC_URL + CREATE_URL, HttpMethod.POST,jsonObject);
             } catch (IOException e) {
-                reply.setStatus(401);//文件打开失败
+                return 400;
             }
-            System.out.print(arrayList);
-            reply.setStatus(200);
+            Map<String,Object> reply= (Map<String,Object>)JSONObject.parse(s);
+           if (reply.get("Success").equals(true))
+           {
+               Edit edit = new Edit();
+               edit.setFileid(gFile.getId());
+               edit.setEditor(username);
+               edit.setEdittime(gFile.getRecent());
+               editDao.save(edit);
+               return 200;
+           }
         }
-        else {
-            reply.setStatus(401);//文件打开失败
-        }
-        reply.setSheets(sheets);
-        return reply;
+        return 400;
     }
 
     @Override
@@ -80,23 +82,13 @@ public class FileServiceImpl implements FileService {
             GFile gFile = optionalGFile.get();
             if (gFile.getCreator().equals(username))
             {
-                File file = new File(DIR_PATH+id.toString()+".txt");
-                if (file.exists()) {
-                    if (file.delete()) {
-                        if (gFileDao.deleteGFileById(id) == 1)
-                        {
-                            return 200;//删除成功
-                        }
-                    }
-                    else {
-                        return 401;//删除失败
-                    }
+                if (gFileDao.deleteGFileById(id) == 1)
+                {
+                    return 200;//删除成功
+                } else {
+                    return 401;//删除失败
                 }
-                else {
-                    return 402;//文件不存在
-                }
-            }
-            else {
+            } else {
                 return 403;//无删除权限
             }
         }
@@ -104,54 +96,24 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
-    public Integer addFile(String username,String filename)
+    public Integer recoverGFileById(String username,Integer id)
     {
-        GFile gFile = new GFile();
-        gFile.setFilename(filename);
-        gFile.setCreator(username);
-        gFile.setRecent(Timestamp.valueOf(LocalDateTime.now()));
-        if (gFileDao.saveFile(gFile) != null)
+        Optional<GFile> optionalGFile = gFileDao.getGFileById(id);
+        if (optionalGFile.isPresent())
         {
-            File file = new File(DIR_PATH + gFile.getId() + ".txt");
-            if (!file.exists()) {
-                try {
-                    file.createNewFile();
-                } catch (IOException e) {
-                    return 400;//创建文件失败
+            GFile gFile = optionalGFile.get();
+            if (gFile.getCreator().equals(username))
+            {
+                if (gFileDao.recoverGFileById(id) == 1)
+                {
+                    return 200;//恢复成功
+                } else {
+                    return 401;//恢复失败
                 }
+            } else {
+                return 403;//无恢复权限
             }
-            Edit edit = new Edit();
-            edit.setFileid(gFile.getId());
-            edit.setEditor(username);
-            edit.setEdittime(gFile.getRecent());
-            editDao.save(edit);
-            return 200;
         }
-        return 400;
-    }
-
-    @Override
-    public Integer editFile(String username, String index, String row, String column, String value)
-    {
-        FileWriter writer;
-        try {
-            writer = new FileWriter(DIR_PATH + index + ".txt",true);
-        } catch (IOException e) {
-            return 401;//文件打开失败
-        }
-        try {
-            writer.write(row + " " + column + " " + value.toString() + "\r\n");
-            writer.flush();
-            writer.close();
-        } catch (IOException e) {
-            return 402;//写入文件失败
-        }
-        Edit edit = new Edit();
-        edit.setEditor(username);
-        edit.setFileid(Integer.parseInt(index));
-        edit.setEdittime(Timestamp.valueOf(LocalDateTime.now()));
-        editDao.save(edit);
-        gFileDao.setRecentById(edit.getEdittime(),Integer.parseInt(index));
-        return 200;
+        return 402;//文件不存在
     }
 }

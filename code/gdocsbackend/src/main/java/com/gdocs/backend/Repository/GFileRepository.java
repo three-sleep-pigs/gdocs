@@ -11,14 +11,23 @@ import java.util.List;
 import java.util.Optional;
 
 public interface GFileRepository extends JpaRepository<GFile,Integer> {
-    @Query("select g from GFile g")
+    @Query("select g from GFile g where g.deleted = false ")
     List<GFile> getGFiles();
+
+    @Query(value="select * from gfile where creator=? and deleted = true",nativeQuery=true)
+    List<GFile> getBin(String creator);
 
     Optional<GFile> getGFileById(Integer id);
 
     @Transactional
     @Modifying
+    @Query(value="update gfile set deleted = true  where id=?",nativeQuery=true)
     int deleteGFileById(Integer id);
+
+    @Transactional
+    @Modifying
+    @Query(value="update gfile set deleted = false  where id=?",nativeQuery=true)
+    int recoverGFileById(Integer id);
 
     @Transactional
     @Modifying

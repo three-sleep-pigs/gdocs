@@ -1,12 +1,16 @@
 package com.gdocs.backend.Service;
 
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
 import com.gdocs.backend.Configure.GetHttpSessionConfigurator;
+import com.gdocs.backend.Entity.Edit;
+import com.gdocs.backend.Util.HTTPUtil;
 import com.gdocs.backend.Util.JSONParse;
 import com.gdocs.backend.Util.Pako_GzipUtils;
 import com.gdocs.backend.WsResultBean;
 import com.mongodb.DBObject;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Component;
 import org.springframework.util.ResourceUtils;
 
@@ -17,8 +21,12 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.net.URLDecoder;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import static com.gdocs.backend.Util.Constant.APPEND_URL;
+import static com.gdocs.backend.Util.Constant.BASIC_URL;
 
 @Slf4j
 @Component
@@ -51,7 +59,7 @@ public class OnlineExcelWebSocketServer {
      */
     @OnOpen
     public void onOpen(Session session, @PathParam("name") String name) {
-        //正常情况下，可以用登录的用户名或者token来作为userId
+//        正常情况下，可以用登录的用户名或者token来作为userId
 //        如下可以获取到httpSession，与当前的session(socket)不是一样的
 //        HttpSession httpSession = (HttpSession) config.getUserProperties().get(HttpSession.class.getName());
 //        userId = String.valueOf(httpSession.getAttribute("你的token key"));
@@ -91,21 +99,21 @@ public class OnlineExcelWebSocketServer {
         if (bson != null) {
             if (bson.get("t").equals("v")) {
                 //更改数据并存储
-                log.info(bson.toString());
-                FileWriter writer = null;
-                File file = null;
+                //log.info(bson.toString());
+                JSONObject jsonObject = new JSONObject();
+                jsonObject.put("Path","6");
+                jsonObject.put("Data",bson.toString()+",");
+                String s = null;
                 try {
-                    file = new File(URLDecoder.decode(ResourceUtils.getURL("classpath:static/exceldata").getPath(), "utf-8"));
-                    writer = new FileWriter(file,true);
+                    s = HTTPUtil.HttpRestClient(BASIC_URL + APPEND_URL, HttpMethod.POST,jsonObject);
                 } catch (IOException e) {
-                    log.error("打开文件失败");
+                    log.error("写dfs失败");
                 }
-                try {
-                    writer.write(bson.toString()+",");
-                    writer.flush();
-                    writer.close();
-                } catch (IOException e) {
-                    log.error("写入文件失败");
+                //System.out.print(s);
+                Map<String,Object> reply= (Map<String,Object>)JSONObject.parse(s);
+                if (reply.get("Success").equals(false))
+                {
+                    log.error("写dfs失败");
                 }
             }
         }

@@ -8,8 +8,10 @@ import java.util.Optional;
 
 public interface GFileDao {
     List<GFile> getGFiles();
+    List<GFile> getBin(String creator);
     Optional<GFile> getGFileById(Integer id);
     GFile saveFile(GFile gFile);
     int deleteGFileById(Integer id);
+    int recoverGFileById(Integer id);
     int setRecentById(Timestamp recent, Integer id);
 }

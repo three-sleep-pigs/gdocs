@@ -1,8 +1,6 @@
 package client
 
 import (
-	"../../gfs"
-	"../chunkserver"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,21 +8,24 @@ import (
 	"math/rand"
 	"net/http"
 	"time"
+
+	"../../gfs"
+	"../chunkserver"
 )
 
 // Client struct is the GFS client-side driver
 type Client struct {
-	master   string
+	master        string
 	replicaBuffer *ReplicaBuffer
-	identifier	string
+	identifier    string
 }
 
 // NewClient starts a new gfs client.
 func NewClient(master string, addr string) *Client {
 	c := &Client{
-		master:   master,
+		master:        master,
 		replicaBuffer: newReplicaBuffer(master, gfs.ReplicaBufferTick),
-		identifier: addr,
+		identifier:    addr,
 	}
 
 	go func() {
@@ -342,7 +343,7 @@ func (c *Client) readChunk(handle int64, offset int64, data []byte) (int64, erro
 	defer gfs.DebugMsgToFile(fmt.Sprintf("read chunk handle <%d> offset <%d> end", handle, offset), gfs.CLIENT, c.identifier)
 	var readLen int64
 
-	if gfs.MaxChunkSize - offset > int64(len(data)) {
+	if gfs.MaxChunkSize-offset > int64(len(data)) {
 		readLen = int64(len(data))
 	} else {
 		readLen = gfs.MaxChunkSize - offset
@@ -462,7 +463,7 @@ func (c *Client) Write(path string, offset int64, data []byte) (size int, error 
 
 		writeMax := int(gfs.MaxChunkSize - chunkOffset)
 		var writeLen int
-		if begin + writeMax > len(data) {
+		if begin+writeMax > len(data) {
 			writeLen = len(data) - begin
 		} else {
 			writeLen = writeMax
@@ -492,14 +493,14 @@ func (c *Client) writeChunk(handle int64, offset int64, data []byte) error {
 	gfs.DebugMsgToFile(fmt.Sprintf("write chunk handle <%d> offset <%d> ", handle, offset), gfs.CLIENT, c.identifier)
 	defer gfs.DebugMsgToFile(fmt.Sprintf("write chunk handle <%d> offset <%d> end", handle, offset), gfs.CLIENT, c.identifier)
 	if len(data)+int(offset) > gfs.MaxChunkSize {
-		gfs.DebugMsgToFile(fmt.Sprintf("write chunk handle <%d> offset <%d> err <%s>", handle, offset ,
+		gfs.DebugMsgToFile(fmt.Sprintf("write chunk handle <%d> offset <%d> err <%s>", handle, offset,
 			fmt.Errorf("len(data)+offset = %v > max chunk size", len(data)+int(offset))), gfs.CLIENT, c.identifier)
 		return fmt.Errorf("len(data)+offset = %v > max chunk size", len(data)+int(offset))
 	}
 
 	replicaInfo, err := c.replicaBuffer.Get(handle)
 	if err != nil {
-		gfs.DebugMsgToFile(fmt.Sprintf("write chunk handle <%d> offset <%d> err <%s>", handle, offset , err), gfs.CLIENT, c.identifier)
+		gfs.DebugMsgToFile(fmt.Sprintf("write chunk handle <%d> offset <%d> err <%s>", handle, offset, err), gfs.CLIENT, c.identifier)
 		return err
 	}
 
@@ -509,14 +510,14 @@ func (c *Client) writeChunk(handle int64, offset int64, data []byte) error {
 	var d gfs.ForwardDataReply
 	err = gfs.Call(chain[0], "ChunkServer.RPCForwardData", gfs.ForwardDataArg{DataID: dataID, Data: data, ChainOrder: chain[1:]}, &d)
 	if err != nil {
-		gfs.DebugMsgToFile(fmt.Sprintf("write chunk handle <%d> offset <%d> err <%s>", handle, offset , err), gfs.CLIENT, c.identifier)
+		gfs.DebugMsgToFile(fmt.Sprintf("write chunk handle <%d> offset <%d> err <%s>", handle, offset, err), gfs.CLIENT, c.identifier)
 		return err
 	}
 
 	err = gfs.Call(replicaInfo.Primary, "ChunkServer.RPCWriteChunk",
 		gfs.WriteChunkArg{DbID: dataID, Offset: offset, Secondaries: replicaInfo.Secondaries}, &gfs.WriteChunkReply{})
 	if err != nil {
-		gfs.DebugMsgToFile(fmt.Sprintf("write chunk handle <%d> offset <%d> err <%s>", handle, offset , err), gfs.CLIENT, c.identifier)
+		gfs.DebugMsgToFile(fmt.Sprintf("write chunk handle <%d> offset <%d> err <%s>", handle, offset, err), gfs.CLIENT, c.identifier)
 	}
 	return err
 }
@@ -580,7 +581,7 @@ func (c *Client) appendChunk(handle int64, data []byte) (offset int64, error err
 	defer gfs.DebugMsgToFile(fmt.Sprintf("append chunk handle <%d> offset <%d> end", handle, offset), gfs.CLIENT, c.identifier)
 	if len(data) > gfs.MaxAppendSize {
 		gfs.DebugMsgToFile(fmt.Sprintf("append chunk handle <%d> offset <%d> error <%s>", handle, offset,
-		fmt.Errorf("len(data) = %v > max append size", len(data))), gfs.CLIENT, c.identifier)
+			fmt.Errorf("len(data) = %v > max append size", len(data))), gfs.CLIENT, c.identifier)
 		return -1, fmt.Errorf("len(data) = %v > max append size", len(data)), gfs.UnknownError
 	}
 

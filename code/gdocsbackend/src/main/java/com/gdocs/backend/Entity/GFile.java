@@ -20,5 +20,8 @@ public class GFile {
     private String creator;
 
     @Basic
+    private boolean deleted;
+
+    @Basic
     private Timestamp recent;
 }

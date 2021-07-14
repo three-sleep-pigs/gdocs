@@ -22,6 +22,12 @@ public class GFileDaoImpl implements GFileDao {
     }
 
     @Override
+    public List<GFile> getBin(String creator)
+    {
+        return gFileRepository.getBin(creator);
+    }
+
+    @Override
     public Optional<GFile> getGFileById(Integer id)
     {
         return gFileRepository.getGFileById(id);
@@ -37,6 +43,12 @@ public class GFileDaoImpl implements GFileDao {
     public int deleteGFileById(Integer id)
     {
         return gFileRepository.deleteGFileById(id);
+    }
+
+    @Override
+    public int recoverGFileById(Integer id)
+    {
+        return gFileRepository.recoverGFileById(id);
     }
 
     @Override
