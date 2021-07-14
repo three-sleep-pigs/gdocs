@@ -388,6 +388,9 @@ func TestGetFileInfo(t *testing.T) {
 // if the append would cause the chunk to exceed the maximum size
 // this chunk should be pad and the data should be appended to the next chunk
 func TestPadOver(t *testing.T) {
+	if c == nil {
+		t.Fatalf("start a client fail")
+	}
 	println("GFS FILES CLEAN")
 	gfsClean()
 	println("DEBUG FILES CLEAN")
@@ -430,6 +433,9 @@ func TestPadOver(t *testing.T) {
 
 // big data that invokes several chunks
 func TestWriteReadBigData(t *testing.T) {
+	if c == nil {
+		t.Fatalf("start a client fail")
+	}
 	println("GFS FILES CLEAN")
 	gfsClean()
 	println("DEBUG FILES CLEAN")
@@ -491,6 +497,9 @@ func TestWriteReadBigData(t *testing.T) {
 
 // a concurrent producer-consumer number collector for testing race contiditon
 func TestConcurrentReadAndAppend(t *testing.T) {
+	if c == nil {
+		t.Fatalf("start a client fail")
+	}
 	println("GFS FILES CLEAN")
 	gfsClean()
 	println("DEBUG FILES CLEAN")
@@ -556,9 +565,8 @@ func TestConcurrentReadAndAppend(t *testing.T) {
 /*
  *  TEST SUITE 4 - Fault Tolerance
  */
-// Shutdown two chunk servers during appending
-func TestShutdownInAppend(t *testing.T) {
-	c = RunClient()
+// Shutdown primary chunk server during appending
+func TestShutdownPrimary(t *testing.T) {
 	if c == nil {
 		t.Fatalf("start a client fail")
 	}
@@ -594,9 +602,8 @@ func TestShutdownInAppend(t *testing.T) {
 			ch <- err
 		}(i)
 	}
-
-	time.Sleep(time.Duration(5) * time.Second)
-	// choose two servers to shutdown during appending
+	time.Sleep(time.Duration(1) * time.Second)
+	// choose primary server to shutdown during appending
 	for i, v := range cs {
 		if csAdd[i] == l.Primary {
 			v.Shutdown()
@@ -607,7 +614,86 @@ func TestShutdownInAppend(t *testing.T) {
 	time.Sleep(time.Duration(5) * time.Second)
 
 	// check correctness, append at least once
-	// TODO : stricter - check replicas
+	for x := 0; x < gfs.MaxChunkSize/2 && len(toDelete) > 0; x++ {
+		buf := make([]byte, 2)
+		n, err := c.Read(p, int64(x*2), buf)
+		if err != nil {
+			t.Error("read error ", err)
+		}
+		if n != 2 {
+			t.Error("should read exactly 2 bytes but", n, "instead")
+		}
+
+		key := -1
+		for k, v := range expected {
+			if reflect.DeepEqual(buf, v) {
+				key = k
+				break
+			}
+		}
+		if key == -1 {
+			t.Error("incorrect data", buf)
+		} else {
+			delete(toDelete, key)
+		}
+	}
+	if len(toDelete) != 0 {
+		t.Errorf("missing data %v", toDelete)
+	}
+
+	time.Sleep(time.Duration(5) * time.Second)
+	println("GFS SHUTDOWN")
+	gfsShutDown()
+}
+// Shutdown replica chunk server during appending
+func TestShutdownReplica(t *testing.T) {
+	if c == nil {
+		t.Fatalf("start a client fail")
+	}
+	println("GFS FILES CLEAN")
+	gfsClean()
+	println("DEBUG FILES CLEAN")
+	CleanDebugFiles()
+	gfsRun()
+	println("GFS START")
+	time.Sleep(time.Duration(5) * time.Second)
+
+	p := "/shutdown.txt"
+	ch := make(chan error, N+3)
+
+	ch <- c.Create(p)
+
+	expected := make(map[int][]byte)
+	toDelete := make(map[int][]byte)
+	for i := 0; i < N; i++ {
+		expected[i] = []byte(fmt.Sprintf("%2d", i))
+		toDelete[i] = []byte(fmt.Sprintf("%2d", i))
+	}
+
+	// get two replica locations
+	var r1 gfs.GetChunkHandleReply
+	ch <- m.RPCGetChunkHandle(gfs.GetChunkHandleArg{Path: p, Index: 0}, &r1)
+	var l gfs.GetReplicasReply
+	ch <- m.RPCGetReplicas(gfs.GetReplicasArg{Handle: r1.Handle}, &l)
+
+	for i := 0; i < N; i++ {
+		go func(x int) {
+			_, err := c.Append(p, expected[x])
+			ch <- err
+		}(i)
+	}
+	time.Sleep(time.Duration(1) * time.Second)
+	// choose primary server to shutdown during appending
+	for i, v := range cs {
+		if csAdd[i] == l.Secondaries[0] {
+			v.Shutdown()
+		}
+	}
+
+	errorAll(ch, N+3, t)
+	time.Sleep(time.Duration(5) * time.Second)
+
+	// check correctness, append at least once
 	for x := 0; x < gfs.MaxChunkSize/2 && len(toDelete) > 0; x++ {
 		buf := make([]byte, 2)
 		n, err := c.Read(p, int64(x*2), buf)

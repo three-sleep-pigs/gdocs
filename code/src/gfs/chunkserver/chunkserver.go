@@ -383,7 +383,7 @@ func (cs *ChunkServer) RPCCheckVersion(args gfs.CheckVersionArg, reply *gfs.Chec
 		chunk.version++      // not stale: update version
 		reply.Stale = false
 	} else {
-		gfs.DebugMsgToFile(fmt.Sprintf("RPCCheckVersion set chunk %d invalid", args.Handle), gfs.CHUNKSERVER, cs.id)
+		gfs.DebugMsgToFile(fmt.Sprintf("RPCCheckVersion set chunk %d with version <%d> invalid", args.Handle, chunk.version), gfs.CHUNKSERVER, cs.id)
 		chunk.invalid = true // stale: set invalid bit
 		reply.Stale = true
 	}
@@ -397,7 +397,7 @@ func (cs *ChunkServer) RPCForwardData(args gfs.ForwardDataArg, reply *gfs.Forwar
 	ok := cs.db.SetIfAbsent(args.DataID, args.Data)
 	if !ok {
 		gfs.DebugMsgToFile(fmt.Sprintf("RPCForwardData error <data %v already exists>", args.DataID), gfs.CHUNKSERVER, cs.id)
-		fmt.Printf("[chunkServer]data %v already exists", args.DataID)
+		//fmt.Printf("[chunkServer]data %v already exists", args.DataID)
 	}
 
 	// send data to next chunkServer(ChainOrder: a chain of chunkServer to send data to)
@@ -422,10 +422,11 @@ func (cs *ChunkServer) RPCCreateChunk(args gfs.CreateChunkArg, reply *gfs.Create
 	chunk.lock.Lock()
 	defer chunk.lock.Unlock()
 	chunk.length = 0
+	chunk.version = 0
 	ok := cs.chunks.SetIfAbsent(fmt.Sprintf("%d", args.Handle), chunk)
 	if !ok {
 		gfs.DebugMsgToFile(fmt.Sprintf("RPCCreateChunk error <create chunk error: chunk%v already exists>", args.Handle), gfs.CHUNKSERVER, cs.id)
-		return fmt.Errorf("[chunkServer]create chunk error: chunk%v already exists", args.Handle)
+		return fmt.Errorf("create chunk error: chunk%v already exists", args.Handle)
 	}
 	filename := path.Join(cs.rootDir, fmt.Sprintf("chunk%v.chk", args.Handle))
 	_, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)

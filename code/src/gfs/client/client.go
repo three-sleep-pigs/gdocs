@@ -350,7 +350,7 @@ func (c *Client) readChunk(handle int64, offset int64, data []byte) (int64, erro
 
 	l, err := c.replicaBuffer.Get(handle)
 	if err != nil {
-		gfs.DebugMsgToFile(fmt.Sprintf("read chunk handle <%d> offset <%d> error <%s>", handle, offset, err), gfs.CLIENT, c.identifier)
+		gfs.DebugMsgToFile(fmt.Sprintf("read chunk handle <%d> offset <%d> error get <%s>", handle, offset, err), gfs.CLIENT, c.identifier)
 		return -1, fmt.Errorf("get replicas error")
 	}
 	var loc string
@@ -365,7 +365,7 @@ func (c *Client) readChunk(handle int64, offset int64, data []byte) (int64, erro
 	r.Data = data
 	err = gfs.Call(loc, "ChunkServer.RPCReadChunk", gfs.ReadChunkArg{Handle: handle, Offset: offset, Length: readLen}, &r)
 	if err != nil {
-		gfs.DebugMsgToFile(fmt.Sprintf("read chunk handle <%d> offset <%d> error <%s>", handle, offset, err), gfs.CLIENT, c.identifier)
+		gfs.DebugMsgToFile(fmt.Sprintf("read chunk handle <%d> offset <%d> error read <%s>", handle, offset, err), gfs.CLIENT, c.identifier)
 		return 0, fmt.Errorf("read chunk from chunk server error")
 	}
 	if r.ErrorCode == gfs.ReadEOF {
@@ -576,7 +576,7 @@ func (c *Client) Append(path string, data []byte) (offset int64, err error) {
 // appendChunk appends data to a chunk.
 // Chunk offset of the start of data will be returned if success.
 func (c *Client) appendChunk(handle int64, data []byte) (offset int64, error error, errCode int) {
-	gfs.DebugMsgToFile(fmt.Sprintf("append chunk handle <%d> offset <%d>", handle, offset), gfs.CLIENT, c.identifier)
+	gfs.DebugMsgToFile(fmt.Sprintf("append chunk handle <%d> offset <%d> start", handle, offset), gfs.CLIENT, c.identifier)
 	defer gfs.DebugMsgToFile(fmt.Sprintf("append chunk handle <%d> offset <%d> end", handle, offset), gfs.CLIENT, c.identifier)
 	if len(data) > gfs.MaxAppendSize {
 		gfs.DebugMsgToFile(fmt.Sprintf("append chunk handle <%d> offset <%d> error <%s>", handle, offset,
