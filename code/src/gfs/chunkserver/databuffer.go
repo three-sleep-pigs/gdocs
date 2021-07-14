@@ -50,7 +50,7 @@ func newDataBuffer(expire, tick time.Duration) *downloadBuffer {
 // NewDataID allocate a new DataID for given handle
 func NewDataID(handle int64) gfs.DataBufferID {
 	now := time.Now()
-	timeStamp := now.Nanosecond() + now.Second()*1000 + now.Minute()*60*1000
+	timeStamp := int64(now.Nanosecond()) + int64(now.Second())*1000000000 + int64(now.Minute())*60*1000000000
 	return gfs.DataBufferID{Handle: handle, Time: timeStamp}
 }
 
@@ -75,7 +75,7 @@ func (buf *downloadBuffer) Get(id gfs.DataBufferID) ([]byte, error) {
 	defer buf.Unlock()
 	item, ok := buf.buffer[id]
 	if !ok {
-		return nil, fmt.Errorf("DataID %v not found in download buffer.", id)
+		return nil, fmt.Errorf("dataID %v not found in download buffer", id)
 	}
 	item.expire = time.Now().Add(buf.expire) // touch
 	return item.data, nil
@@ -87,7 +87,7 @@ func (buf *downloadBuffer) Fetch(id gfs.DataBufferID) ([]byte, error) {
 
 	item, ok := buf.buffer[id]
 	if !ok {
-		return nil, fmt.Errorf("DataID %v not found in download buffer.", id)
+		return nil, fmt.Errorf("dataID %v not found in download buffer", id)
 	}
 
 	delete(buf.buffer, id)
