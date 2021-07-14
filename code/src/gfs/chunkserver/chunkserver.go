@@ -408,6 +408,7 @@ func (cs *ChunkServer) RPCCreateChunk(args gfs.CreateChunkArg, reply *gfs.Create
 	chunk.lock.Lock()
 	defer chunk.lock.Unlock()
 	chunk.length = 0
+	chunk.version = 0
 	ok := cs.chunks.SetIfAbsent(fmt.Sprintf("%d", args.Handle), chunk)
 	if !ok {
 		gfs.DebugMsgToFile(fmt.Sprintf("RPCCreateChunk error <create chunk error: chunk%v already exists>", args.Handle), gfs.CHUNKSERVER, cs.id)

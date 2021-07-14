@@ -493,13 +493,14 @@ func (m *Master) chooseReReplication(handle int64) (from, to string, err error) 
 func (m *Master) RPCHeartbeat(args gfs.HeartbeatArg, reply *gfs.HeartbeatReply) error {
 	gfs.DebugMsgToFile(fmt.Sprintf("RPCHeartbeat chunk server address <%s> start", args.Address), gfs.MASTER, m.address)
 	defer gfs.DebugMsgToFile(fmt.Sprintf("RPCHeartbeat chunk server address <%s> end", args.Address), gfs.MASTER, m.address)
-	isFirst := true
+	isFirst := false
 	// new chunk server info
 	chunkServerInfoNew := &ChunkServerInfo{lastHeartbeat: time.Now(), chunks: make(map[int64]bool),
 		garbage: nil, valid: true}
 	// no method to delete chunk server info so can not check ok
 	chunkServerInfoFound, ok:= m.chunkServerInfos.Get(args.Address)
 	if !ok {
+		isFirst = true
 		m.chunkServerInfos.SetIfAbsent(args.Address, chunkServerInfoNew)
 	} else {
 		chunkServerInfoOld := chunkServerInfoFound.(*ChunkServerInfo)
