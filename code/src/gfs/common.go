@@ -79,7 +79,7 @@ const (
 	DeletedFilePrefix  = "__del__"
 	MinimumNumReplicas = 2
 	DefaultNumReplicas = 3
-	LeaseExpire        = 1 * time.Minute
+	LeaseExpire        = 1 * time.Hour
 	MaxChunkSize       = 32 << 20 // 512KB DEBUG ONLY 64 << 20
 	MaxAppendSize      = MaxChunkSize / 4
 
