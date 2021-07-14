@@ -11,9 +11,10 @@ type DataBufferID struct {
 }
 
 type ChunkReplicaInfo struct {
-	Primary 	string
-	Expire 		time.Time
-	Secondaries []string
+	Primary 	 string
+	Expire 		 time.Time
+	Secondaries  []string
+	BufferExpire time.Time
 }
 
 type TYPE int
@@ -94,6 +95,7 @@ const (
 
 	// client
 	ReplicaBufferTick 	= 500 * time.Millisecond
+	ReplicaBufferExpire = 1 * time.Minute
 )
 
 // error code
