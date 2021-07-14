@@ -17,6 +17,7 @@ const (
 	msAddr = "127.0.0.1:8080"
 	msRootDir = "../msroot"
 	csNum = 3
+	N = 100
 )
 
 func getCsRoots() [3]string {
@@ -294,6 +295,68 @@ func TestGetReplicas(t *testing.T) {
 	gfsShutDown()
 }
 
+// check if the content of replicas are the same, returns the number of replicas
+func checkReplicas(handle int64, length int64, t *testing.T) int {
+	var data [][]byte
+
+	// get replicas location from master
+	var l gfs.GetReplicasReply
+	err := m.RPCGetReplicas(gfs.GetReplicasArg{Handle: handle}, &l)
+	if err != nil {
+		t.Error(err)
+	}
+
+	// read
+	args := gfs.ReadChunkArg{Handle: handle, Length: length}
+	Locations := make([]string, 0)
+	for _, v := range l.Secondaries {
+		Locations = append(Locations, v)
+	}
+	Locations = append(Locations, l.Primary)
+	for _, addr := range Locations {
+		var r gfs.ReadChunkReply
+		err := gfs.Call(addr, "ChunkServer.RPCReadChunk", args, &r)
+		if err == nil {
+			data = append(data, r.Data)
+		}
+	}
+
+	// check equality
+	for i := 1; i < len(data); i++ {
+		if !reflect.DeepEqual(data[0], data[i]) {
+			t.Error("replicas are different. ", data[0], "vs", data[i])
+		}
+	}
+
+	return len(data)
+}
+
+func TestReplicaEquality(t *testing.T) {
+	println("GFS FILES CLEAN")
+	gfsClean()
+	println("GFS START")
+	gfsRun()
+	time.Sleep(time.Duration(5) * time.Second)
+	var r1 gfs.GetChunkHandleReply
+	var data [][]byte
+	p := "/TestWriteChunk.txt"
+	err := m.RPCCreateFile(gfs.CreateFileArg{Path: p}, &gfs.CreateFileReply{})
+	if err != nil {
+		t.Error(err)
+	}
+	err = m.RPCGetChunkHandle(gfs.GetChunkHandleArg{Path: p, Index: 0}, &r1)
+	if err != nil {
+		t.Error(err)
+	}
+	n := checkReplicas(r1.Handle, N*2, t)
+	if n != gfs.DefaultNumReplicas {
+		t.Error("expect", gfs.DefaultNumReplicas, "replicas, got only", len(data))
+	}
+	time.Sleep(time.Duration(5) * time.Second)
+	println("GFS SHUTDOWN")
+	gfsShutDown()
+}
+
 func TestGetFileInfo(t *testing.T) {
 	println("GFS FILES CLEAN")
 	gfsClean()
@@ -448,16 +511,16 @@ func TestConcurrentReadAndAppend(t *testing.T) {
 	for i := 0; i < 26; i++ {
 		toWriteBuf[i] = byte(i%26 + 'a')
 	}
-	go func() {
-		readTicker := time.Tick(readTick)
-		writeTicker := time.Tick(writeTick)
-		num := 0
-		for {
-			if num == 6 {
-				return
-			}
-			select {
-			case <- readTicker:
+	readTicker := time.Tick(readTick)
+	writeTicker := time.Tick(writeTick)
+	num := 0
+	for {
+		if num == 6 {
+			return
+		}
+		select {
+		case <- readTicker:
+			go func() {
 				buf := make([]byte, num * 26)
 				_, e := c.Read(filePath, 0, buf)
 				if e != nil {
@@ -466,18 +529,35 @@ func TestConcurrentReadAndAppend(t *testing.T) {
 				var strToConvert string
 				strToConvert = string(buf)
 				fmt.Println("[READ]", strToConvert)
-			case <- writeTicker:
-				_, e := c.Append(filePath, toWriteBuf)
-				if e != nil {
-					t.Error(e)
-				}
-				num++
-			default:
+			}()
+		case <- writeTicker:
+			var wg sync.WaitGroup
+			wg.Add(2)
+			for i := 0; i < 2; i++{
+				go func() {
+					_, e := c.Append(filePath, toWriteBuf)
+					if e != nil {
+						t.Error(e)
+					}
+					wg.Done()
+				}()
 			}
+			wg.Wait()
+			num = num + 2
+		default:
 		}
-	}()
+	}
 
 	time.Sleep(time.Duration(5) * time.Second)
 	println("GFS SHUTDOWN")
 	gfsShutDown()
 }
+
+/*
+ *  TEST SUITE 4 - Fault Tolerance
+ */
+
+
+/*
+ *  TEST SUITE 5 - Persistent Tests
+ */
