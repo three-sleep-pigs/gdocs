@@ -31,8 +31,8 @@ type ChunkServer struct {
 	chunks    cmap.ConcurrentMap  // map[int64]*ChunkInfo
 	dead     bool                 // set to true if server is shutdown
 	garbage  []int64              // handles of garbage chunks to be deleted
-	leaseSet map[int64]void       // leases to be extended? I guess...
-	db       *downloadBuffer      // expiring download buffer??? fine I have no idea about it...
+	leaseSet map[int64]void       // leases to be extended
+	db       *downloadBuffer      // buffer of received data
 }
 
 type ChunkInfo struct {
