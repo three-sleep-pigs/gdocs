@@ -29,9 +29,9 @@ type ChunkServer struct {
 	chunks    cmap.ConcurrentMap  // map[int64]*ChunkInfo
 	dead     bool                 // set to true if server is shutdown
 	garbage  []int64              // handles of garbage chunks to be deleted
-	leaseSet cmap.ConcurrentMap      // leases to be extended? I guess...
-	leaseSetOk cmap.ConcurrentMap
-	db       *downloadBuffer      // expiring download buffer??? fine I have no idea about it...
+	leaseSet cmap.ConcurrentMap   // leases to be extended
+	leaseSetOk cmap.ConcurrentMap // if the lease has been extended successfully, set to true, if not, set to false
+	db       *downloadBuffer      // buffer of received data
 }
 
 type ChunkInfo struct {
@@ -295,6 +295,9 @@ func (cs *ChunkServer) heartbeat() error {
 	if err != nil {
 		gfs.DebugMsgToFile(fmt.Sprintf("chunk server heartbeat error <%s>", err), gfs.CHUNKSERVER, cs.id)
 		return err
+	}
+	for t := range le {
+		cs.leaseSetOk.Set(fmt.Sprintf("%d", t), true)
 	}
 	for tn := range reply.NotPrimary {
 		cs.leaseSetOk.Set(fmt.Sprintf("%d", tn), false)
