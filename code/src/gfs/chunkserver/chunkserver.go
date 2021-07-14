@@ -48,11 +48,11 @@ type Mutation struct {
 	Offset int64
 }
 
-type metadata struct {
-	chunkHandle int64
-	length      int64
-	version     int64
-	checksum    int64
+type Metadata struct {
+	ChunkHandle int64
+	Length      int64
+	Version     int64
+	Checksum    int64
 }
 
 // NewChunkServer create a new chunk server and return a pointer to it
@@ -197,7 +197,7 @@ func (cs *ChunkServer) loadMeta() error {
 	defer file.Close()
 
 	//decode chunk metadata from file into slice
-	var chunkMeta []metadata
+	var chunkMeta []Metadata
 	dec := gob.NewDecoder(file)
 	err = dec.Decode(&chunkMeta)
 	if err != nil {
@@ -206,10 +206,10 @@ func (cs *ChunkServer) loadMeta() error {
 	}
 
 	for _, c := range chunkMeta {
-		e := cs.chunks.SetIfAbsent(fmt.Sprintf("%d", c.chunkHandle), &ChunkInfo{
-			length:  c.length,
-			version: c.version,
-			checksum: c.checksum,
+		e := cs.chunks.SetIfAbsent(fmt.Sprintf("%d", c.ChunkHandle), &ChunkInfo{
+			length:  c.Length,
+			version: c.Version,
+			checksum: c.Checksum,
 		})
 		if !e {
 			gfs.DebugMsgToFile(fmt.Sprintf("chunk server set chunk metadata exist"), gfs.CHUNKSERVER, cs.id)
@@ -234,7 +234,7 @@ func (cs *ChunkServer) storeMeta() error {
 	defer file.Close()
 
 	// construct metadata slice according to chunks map
-	var chunkMeta []metadata
+	var chunkMeta []Metadata
 	for tuple := range cs.chunks.IterBuffered() {
 		h, e := strconv.ParseInt(tuple.Key, 10, 64)
 		if e != nil {
@@ -243,11 +243,11 @@ func (cs *ChunkServer) storeMeta() error {
 		}
 		c := tuple.Val.(*ChunkInfo)
 		c.lock.RLock()
-		chunkMeta = append(chunkMeta, metadata{
-			chunkHandle: h,
-			length:      c.length,
-			version:     c.version,
-			checksum:    c.checksum,
+		chunkMeta = append(chunkMeta, Metadata{
+			ChunkHandle: h,
+			Length:      c.length,
+			Version:     c.version,
+			Checksum:    c.checksum,
 		})
 		c.lock.RUnlock()
 	}
