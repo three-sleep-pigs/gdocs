@@ -15,8 +15,6 @@ import (
 	"time"
 )
 
-type void struct{}
-
 
 // ChunkServer struct
 type ChunkServer struct {
@@ -31,7 +29,8 @@ type ChunkServer struct {
 	chunks    cmap.ConcurrentMap  // map[int64]*ChunkInfo
 	dead     bool                 // set to true if server is shutdown
 	garbage  []int64              // handles of garbage chunks to be deleted
-	leaseSet map[int64]void       // leases to be extended
+	leaseSet cmap.ConcurrentMap   // leases to be extended
+	leaseSetOk cmap.ConcurrentMap // if the lease has been extended successfully, set to true, if not, set to false
 	db       *downloadBuffer      // buffer of received data
 }
 
@@ -49,11 +48,11 @@ type Mutation struct {
 	Offset int64
 }
 
-type metadata struct {
-	chunkHandle int64
-	length      int64
-	version     int64
-	checksum    int64
+type Metadata struct {
+	ChunkHandle int64
+	Length      int64
+	Version     int64
+	Checksum    int64
 }
 
 // NewChunkServer create a new chunk server and return a pointer to it
@@ -64,7 +63,8 @@ func NewChunkServer(id string, master string, rootDir string) *ChunkServer {
 		master:   master,
 		rootDir:  rootDir,
 		chunks:    cmap.New(),
-		leaseSet: make(map[int64]void),
+		leaseSet: cmap.New(),
+		leaseSetOk: cmap.New(),
 		db:       newDataBuffer(time.Minute, 30*time.Second),
 	}
 	gfs.DebugMsgToFile("new chunk server", gfs.CHUNKSERVER, cs.id)
@@ -197,7 +197,7 @@ func (cs *ChunkServer) loadMeta() error {
 	defer file.Close()
 
 	//decode chunk metadata from file into slice
-	var chunkMeta []metadata
+	var chunkMeta []Metadata
 	dec := gob.NewDecoder(file)
 	err = dec.Decode(&chunkMeta)
 	if err != nil {
@@ -206,10 +206,10 @@ func (cs *ChunkServer) loadMeta() error {
 	}
 
 	for _, c := range chunkMeta {
-		e := cs.chunks.SetIfAbsent(fmt.Sprintf("%d", c.chunkHandle), &ChunkInfo{
-			length:  c.length,
-			version: c.version,
-			checksum: c.checksum,
+		e := cs.chunks.SetIfAbsent(fmt.Sprintf("%d", c.ChunkHandle), &ChunkInfo{
+			length:  c.Length,
+			version: c.Version,
+			checksum: c.Checksum,
 		})
 		if !e {
 			gfs.DebugMsgToFile(fmt.Sprintf("chunk server set chunk metadata exist"), gfs.CHUNKSERVER, cs.id)
@@ -234,7 +234,7 @@ func (cs *ChunkServer) storeMeta() error {
 	defer file.Close()
 
 	// construct metadata slice according to chunks map
-	var chunkMeta []metadata
+	var chunkMeta []Metadata
 	for tuple := range cs.chunks.IterBuffered() {
 		h, e := strconv.ParseInt(tuple.Key, 10, 64)
 		if e != nil {
@@ -243,11 +243,11 @@ func (cs *ChunkServer) storeMeta() error {
 		}
 		c := tuple.Val.(*ChunkInfo)
 		c.lock.RLock()
-		chunkMeta = append(chunkMeta, metadata{
-			chunkHandle: h,
-			length:      c.length,
-			version:     c.version,
-			checksum:    c.checksum,
+		chunkMeta = append(chunkMeta, Metadata{
+			ChunkHandle: h,
+			Length:      c.length,
+			Version:     c.version,
+			Checksum:    c.checksum,
 		})
 		c.lock.RUnlock()
 	}
@@ -278,15 +278,12 @@ func (cs *ChunkServer) garbageCollection() error {
 func (cs *ChunkServer) heartbeat() error {
 	gfs.DebugMsgToFile("chunk server heartbeat start", gfs.CHUNKSERVER, cs.id)
 	defer gfs.DebugMsgToFile("chunk server heartbeat end", gfs.CHUNKSERVER, cs.id)
-	// TODO: add leases to extend
-
 	// make lease slice from cs.leaseSet
 	var le []int64
-	cs.lock.RLock()
-	for v := range cs.leaseSet {
-		le = append(le, v)
+	for tuple := range cs.leaseSet.IterBuffered() {
+		toAdd, _:= strconv.ParseInt(tuple.Key, 10, 64)
+		le = append(le, toAdd)
 	}
-	cs.lock.RUnlock()
 
 	// call master
 	args := &gfs.HeartbeatArg{
@@ -299,7 +296,24 @@ func (cs *ChunkServer) heartbeat() error {
 		gfs.DebugMsgToFile(fmt.Sprintf("chunk server heartbeat error <%s>", err), gfs.CHUNKSERVER, cs.id)
 		return err
 	}
-
+	for t := range le {
+		cs.leaseSetOk.Set(fmt.Sprintf("%d", t), true)
+	}
+	for tn := range reply.NotPrimary {
+		cs.leaseSetOk.Set(fmt.Sprintf("%d", tn), false)
+	}
+	for ti := range reply.InvalidHandles {
+		cs.leaseSetOk.Set(fmt.Sprintf("%d", ti), false)
+	}
+	for t := range le {
+		c, ok := cs.leaseSet.Get(fmt.Sprintf("%d", t))
+		if !ok {
+			// TODO: handle error
+			continue
+		}
+		cs.leaseSet.Remove(fmt.Sprintf("%d", t))
+		close(c.(chan struct{}))
+	}
 	// append garbage
 	cs.lock.Lock()
 	cs.garbage = append(cs.garbage, reply.Garbage...)
@@ -369,7 +383,7 @@ func (cs *ChunkServer) RPCCheckVersion(args gfs.CheckVersionArg, reply *gfs.Chec
 		chunk.version++      // not stale: update version
 		reply.Stale = false
 	} else {
-		gfs.DebugMsgToFile(fmt.Sprintf("RPCCheckVersion set chunk %d invalid", args.Handle), gfs.CHUNKSERVER, cs.id)
+		gfs.DebugMsgToFile(fmt.Sprintf("RPCCheckVersion set chunk %d with version <%d> invalid", args.Handle, chunk.version), gfs.CHUNKSERVER, cs.id)
 		chunk.invalid = true // stale: set invalid bit
 		reply.Stale = true
 	}
@@ -383,7 +397,7 @@ func (cs *ChunkServer) RPCForwardData(args gfs.ForwardDataArg, reply *gfs.Forwar
 	ok := cs.db.SetIfAbsent(args.DataID, args.Data)
 	if !ok {
 		gfs.DebugMsgToFile(fmt.Sprintf("RPCForwardData error <data %v already exists>", args.DataID), gfs.CHUNKSERVER, cs.id)
-		fmt.Printf("[chunkServer]data %v already exists", args.DataID)
+		//fmt.Printf("[chunkServer]data %v already exists", args.DataID)
 	}
 
 	// send data to next chunkServer(ChainOrder: a chain of chunkServer to send data to)
@@ -408,10 +422,11 @@ func (cs *ChunkServer) RPCCreateChunk(args gfs.CreateChunkArg, reply *gfs.Create
 	chunk.lock.Lock()
 	defer chunk.lock.Unlock()
 	chunk.length = 0
+	chunk.version = 0
 	ok := cs.chunks.SetIfAbsent(fmt.Sprintf("%d", args.Handle), chunk)
 	if !ok {
 		gfs.DebugMsgToFile(fmt.Sprintf("RPCCreateChunk error <create chunk error: chunk%v already exists>", args.Handle), gfs.CHUNKSERVER, cs.id)
-		return fmt.Errorf("[chunkServer]create chunk error: chunk%v already exists", args.Handle)
+		return fmt.Errorf("create chunk error: chunk%v already exists", args.Handle)
 	}
 	filename := path.Join(cs.rootDir, fmt.Sprintf("chunk%v.chk", args.Handle))
 	_, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
@@ -594,9 +609,51 @@ func (cs *ChunkServer) sync(handle int64, ck *ChunkInfo, m *Mutation) error {
 
 }
 
+func (cs *ChunkServer) checkExpire(expire time.Time, handle int64) error {
+	// check expire
+	if time.Now().Sub(expire) + gfs.HeartbeatInterval > 0 {
+		e := fmt.Errorf("out of date primary")
+		gfs.DebugMsgToFile(fmt.Sprintf("RPCAppendChunk error <%s>", e), gfs.CHUNKSERVER, cs.id)
+		return e
+	}
+	// ask for lease extend
+	if time.Now().Sub(expire) < gfs.MutationMaxTime {
+		cs.leaseSet.SetIfAbsent(fmt.Sprintf("%d", handle), make(chan struct{}))
+		// wait until get msg from master
+		c, o := cs.leaseSet.Get(fmt.Sprintf("%d", handle))
+		if !o {
+			// should never reach here
+			e := fmt.Errorf("mutation time is not enough ")
+			gfs.DebugMsgToFile(fmt.Sprintf("RPCAppendChunk error <%s>", e), gfs.CHUNKSERVER, cs.id)
+			return e
+		}
+		// wait until get lease extended
+		// FIXME: awake all
+		<- c.(chan struct{})
+		okk, ok := cs.leaseSetOk.Get(fmt.Sprintf("%d", handle))
+		if !ok {
+			// TODO: check not exist
+			e := fmt.Errorf("out of date primary asking for lease extend fails")
+			gfs.DebugMsgToFile(fmt.Sprintf("RPCAppendChunk error <%s>", e), gfs.CHUNKSERVER, cs.id)
+			return e
+		}
+		if !okk.(bool) {
+			e := fmt.Errorf("out of date primary asking for lease extend fails")
+			gfs.DebugMsgToFile(fmt.Sprintf("RPCAppendChunk error <%s>", e), gfs.CHUNKSERVER, cs.id)
+			return e
+		}
+	}
+	return nil
+}
+
+
 // RPCWriteChunk called by client
 // write the data at given offset of args to chunk handle
 func (cs *ChunkServer) RPCWriteChunk(args gfs.WriteChunkArg, reply *gfs.WriteChunkReply) error {
+	e := cs.checkExpire(args.Expire, args.DbID.Handle)
+	if e != nil {
+		return e
+	}
 	gfs.DebugMsgToFile("RPCWriteChunk start", gfs.CHUNKSERVER, cs.id)
 	defer gfs.DebugMsgToFile("RPCWriteChunk end", gfs.CHUNKSERVER, cs.id)
 	//get the data block from data buffer and delete the block
@@ -656,6 +713,10 @@ func (cs *ChunkServer) RPCWriteChunk(args gfs.WriteChunkArg, reply *gfs.WriteChu
 // RPCAppendChunk called by client
 // write the data of args at the end of chunk handle
 func (cs *ChunkServer) RPCAppendChunk(args gfs.AppendChunkArg, reply *gfs.AppendChunkReply) error {
+	e := cs.checkExpire(args.Expire, args.DbID.Handle)
+	if e != nil {
+		return e
+	}
 	//get the data block from data buffer and delete the block
 	gfs.DebugMsgToFile("RPCAppendChunk start", gfs.CHUNKSERVER, cs.id)
 	defer gfs.DebugMsgToFile("RPCAppendChunk end", gfs.CHUNKSERVER, cs.id)

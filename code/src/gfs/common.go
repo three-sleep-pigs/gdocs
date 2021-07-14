@@ -2,6 +2,7 @@ package gfs
 
 import (
 	"os"
+	"syscall"
 	"time"
 )
 
@@ -26,7 +27,7 @@ const (
 )
 
 const (
-	DEBUG = false
+	DEBUG = true
 	ClientDirectory	= "../debug/"
 	ClientDebugFilePrefix = "DEBUG_client_"
 	ClientMSGPrefix = "[CLIENT] "
@@ -67,8 +68,8 @@ func DebugMsgToFile(msg string, t TYPE, description string) {
 	}
 	defer file.Close()
 	// use file lock to support concurrent write
-	//syscall.Flock(int(file.Fd()), syscall.LOCK_EX)
-	//defer syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+	syscall.Flock(int(file.Fd()), syscall.LOCK_EX)
+	defer syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
 
 	file.WriteString(toWrite)
 }
@@ -91,10 +92,11 @@ const (
 	// chunk server
 	HeartbeatInterval   = 100 * time.Millisecond
 	GarbageCollectionInterval = 2 * time.Hour
+	MutationMaxTime 	= 1 * time.Second
 
 	// client
 	ReplicaBufferTick 	= 500 * time.Millisecond
-	ReplicaBufferExpire = 1 * time.Minute
+	ReplicaBufferExpire = 1 * time.Second
 )
 
 // error code

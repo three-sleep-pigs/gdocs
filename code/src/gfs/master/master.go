@@ -75,27 +75,27 @@ type ChunkServerInfo struct {
 }
 
 type PersistentFileMetadata struct {
-	path string
+	Path string
 
-	isDir bool
+	IsDir bool
 
 	// if it is a file
-	size         int64
-	chunkHandles []int64
+	Size         int64
+	ChunkHandles []int64
 }
 
 type PersistentChunkMetadata struct {
-	chunkHandle int64
+	ChunkHandle int64
 
-	version  int64
-	checksum int64
-	refcnt   int64
+	Version  int64
+	Checksum int64
+	Refcnt   int64
 }
 
 type PersistentMetadata struct {
-	nextHandle int64
-	chunkMeta  []PersistentChunkMetadata
-	fileMeta   []PersistentFileMetadata
+	NextHandle int64
+	ChunkMeta  []PersistentChunkMetadata
+	FileMeta   []PersistentFileMetadata
 }
 
 // NewAndServe starts a master and returns the pointer to it.
@@ -217,25 +217,25 @@ func (m *Master) loadMeta() error {
 		return err
 	}
 
-	m.nextHandle = meta.nextHandle
+	m.nextHandle = meta.NextHandle
 
-	for _, pf := range meta.fileMeta {
+	for _, pf := range meta.FileMeta {
 		f := new(FileMetadata)
-		f.isDir = pf.isDir
-		f.size = pf.size
-		f.chunkHandles = pf.chunkHandles
-		e := m.fileNamespace.SetIfAbsent(pf.path, f)
+		f.isDir = pf.IsDir
+		f.size = pf.Size
+		f.chunkHandles = pf.ChunkHandles
+		e := m.fileNamespace.SetIfAbsent(pf.Path, f)
 		if !e {
 			gfs.DebugMsgToFile("set file metadata exist", gfs.MASTER, m.address)
 		}
 	}
 
-	for _, pc := range meta.chunkMeta {
+	for _, pc := range meta.ChunkMeta {
 		c := new(ChunkMetadata)
-		c.version = pc.version
-		c.checksum = pc.checksum
-		c.refcnt = pc.refcnt
-		e := m.chunkNamespace.SetIfAbsent(fmt.Sprintf("%d", pc.chunkHandle), c)
+		c.version = pc.Version
+		c.checksum = pc.Checksum
+		c.refcnt = pc.Refcnt
+		e := m.chunkNamespace.SetIfAbsent(fmt.Sprintf("%d", pc.ChunkHandle), c)
 		if !e {
 			gfs.DebugMsgToFile("set chunk metadata exist", gfs.MASTER, m.address)
 		}
@@ -264,11 +264,11 @@ func (m *Master) storeMeta() error {
 	for tuple := range m.fileNamespace.IterBuffered() {
 		f := tuple.Val.(*FileMetadata)
 		f.RLock()
-		meta.fileMeta = append(meta.fileMeta, PersistentFileMetadata{
-			path:         tuple.Key,
-			isDir:        f.isDir,
-			size:         f.size,
-			chunkHandles: f.chunkHandles,
+		meta.FileMeta = append(meta.FileMeta, PersistentFileMetadata{
+			Path:         tuple.Key,
+			IsDir:        f.isDir,
+			Size:         f.size,
+			ChunkHandles: f.chunkHandles,
 		})
 		f.RUnlock()
 	}
@@ -281,17 +281,17 @@ func (m *Master) storeMeta() error {
 		}
 		c := tuple.Val.(*ChunkMetadata)
 		c.RLock()
-		meta.chunkMeta = append(meta.chunkMeta, PersistentChunkMetadata{
-			chunkHandle: h,
-			version:     c.version,
-			checksum:    c.checksum,
-			refcnt:      c.refcnt,
+		meta.ChunkMeta = append(meta.ChunkMeta, PersistentChunkMetadata{
+			ChunkHandle: h,
+			Version:     c.version,
+			Checksum:    c.checksum,
+			Refcnt:      c.refcnt,
 		})
 		c.RUnlock()
 	}
 
 	m.nhLock.Lock()
-	meta.nextHandle = m.nextHandle
+	meta.NextHandle = m.nextHandle
 	m.nhLock.Unlock()
 
 	enc := gob.NewEncoder(file)
@@ -333,6 +333,7 @@ func (m *Master) serverCheck() error {
 		cs := tuple.Val.(*ChunkServerInfo)
 		cs.Lock()
 		if cs.valid && cs.lastHeartbeat.Add(gfs.ServerTimeout).Before(now) { // dead server
+			gfs.DebugMsgToFile(fmt.Sprintf("server check remove dead server <%s>", tuple.Key), gfs.MASTER, m.address)
 			cs.valid = false // set to invalid
 			for h, v := range cs.chunks {
 				if v { // remove from chunk location
@@ -351,6 +352,10 @@ func (m *Master) serverCheck() error {
 						}
 					}
 					chunkMetadata.location = newLocation
+					// update primary
+					if chunkMetadata.primary == tuple.Key {
+						chunkMetadata.primary = ""
+					}
 					chunkMetadata.expire = time.Now()
 
 					// add chunk to replicasNeedList if replica is not enough
@@ -494,21 +499,30 @@ func (m *Master) RPCHeartbeat(args gfs.HeartbeatArg, reply *gfs.HeartbeatReply) 
 	gfs.DebugMsgToFile(fmt.Sprintf("RPCHeartbeat chunk server address <%s> start", args.Address), gfs.MASTER, m.address)
 	defer gfs.DebugMsgToFile(fmt.Sprintf("RPCHeartbeat chunk server address <%s> end", args.Address), gfs.MASTER, m.address)
 	isFirst := true
-	// new chunk server info
-	chunkServerInfoNew := &ChunkServerInfo{lastHeartbeat: time.Now(), chunks: make(map[int64]bool),
-		garbage: nil, valid: true}
+	var chunkServerInfo *ChunkServerInfo
 	// no method to delete chunk server info so can not check ok
 	chunkServerInfoFound, ok:= m.chunkServerInfos.Get(args.Address)
 	if !ok {
+		gfs.DebugMsgToFile(fmt.Sprintf("RPCHeartbeat chunk server address <%s> ok false so first", args.Address), gfs.MASTER, m.address)
+		// new chunk server info
+		chunkServerInfoNew := &ChunkServerInfo{lastHeartbeat: time.Now(), chunks: make(map[int64]bool),
+			garbage: nil, valid: true}
 		m.chunkServerInfos.SetIfAbsent(args.Address, chunkServerInfoNew)
+		chunkServerInfo = chunkServerInfoNew
 	} else {
 		chunkServerInfoOld := chunkServerInfoFound.(*ChunkServerInfo)
 		chunkServerInfoOld.Lock()
 		if !chunkServerInfoOld.valid {
+			gfs.DebugMsgToFile(fmt.Sprintf("RPCHeartbeat chunk server address <%s> valid false so first", args.Address), gfs.MASTER, m.address)
 			isFirst = true
+			// new chunk server info
+			chunkServerInfoNew := &ChunkServerInfo{lastHeartbeat: time.Now(), chunks: make(map[int64]bool),
+				garbage: nil, valid: true}
 			m.chunkServerInfos.SetIfAbsent(args.Address, chunkServerInfoNew)
+			chunkServerInfo = chunkServerInfoNew
 			chunkServerInfoOld.Unlock()
 		} else {
+			isFirst = false
 			// update time
 			chunkServerInfoOld.lastHeartbeat = time.Now()
 			// send garbage
@@ -517,6 +531,7 @@ func (m *Master) RPCHeartbeat(args gfs.HeartbeatArg, reply *gfs.HeartbeatReply) 
 				chunkServerInfoOld.chunks[v] = false
 			}
 			chunkServerInfoOld.garbage = make([]int64, 0)
+			chunkServerInfo = chunkServerInfoOld
 			chunkServerInfoOld.Unlock()
 		}
 	}
@@ -538,6 +553,7 @@ func (m *Master) RPCHeartbeat(args gfs.HeartbeatArg, reply *gfs.HeartbeatReply) 
 			chunkMetadata := chunkMetadataFound.(*ChunkMetadata)
 			chunkMetadata.Lock()
 			if v.Checksum == chunkMetadata.checksum && v.Version == chunkMetadata.version {
+				gfs.DebugMsgToFile(fmt.Sprintf("RPCHeartbeat chunk server address <%s> append chunk metadata", args.Address), gfs.MASTER, m.address)
 				chunkMetadata.location = append(chunkMetadata.location, args.Address)
 			} else {
 				garbage = append(garbage, v.ChunkHandle)
@@ -545,9 +561,9 @@ func (m *Master) RPCHeartbeat(args gfs.HeartbeatArg, reply *gfs.HeartbeatReply) 
 			chunkMetadata.Unlock()
 		}
 		// set garbage
-		chunkServerInfoNew.Lock()
-		chunkServerInfoNew.garbage = garbage
-		chunkServerInfoNew.Unlock()
+		chunkServerInfo.Lock()
+		chunkServerInfo.garbage = garbage
+		chunkServerInfo.Unlock()
 	} else {
 		// use slice to avoid handling only front leases to extend
 		var invalidHandle []int64 = make([]int64, 0)
@@ -616,16 +632,17 @@ func (m *Master) RPCGetReplicas(args gfs.GetReplicasArg, reply *gfs.GetReplicasR
 		// wait group to make sure all goroutines end
 		var wg sync.WaitGroup
 		wg.Add(len(chunkMetadata.location))
+		gfs.DebugMsgToFile(fmt.Sprintf("RPCGetReplicas chunk handle <%d> call chunk servers len <%d>" , args.Handle, len(chunkMetadata.location)), gfs.MASTER, m.address)
 		for _, v := range chunkMetadata.location {
 			go func(addr string) {
 				var ret gfs.CheckVersionReply
 				// call rpc to let all chunk servers check their own version
 				err := gfs.Call(addr, "ChunkServer.RPCCheckVersion", checkVersionArg, &ret)
 				if err == nil && ret.Stale == false {
+					gfs.DebugMsgToFile(fmt.Sprintf("RPCGetReplicas chunk handle <%d> call chunk server <%s>" +
+						"check version successfully set version <%d>", args.Handle, addr, checkVersionArg.Version), gfs.MASTER, m.address)
 					lock.Lock()
 					newList = append(newList, addr)
-					gfs.DebugMsgToFile(fmt.Sprintf("RPCGetReplicas chunk handle <%d> call chunk server <%s>" +
-						"check version error <%s>", args.Handle, addr, err), gfs.MASTER, m.address)
 					lock.Unlock()
 				} else {
 					// add to garbage collection
@@ -633,6 +650,8 @@ func (m *Master) RPCGetReplicas(args gfs.GetReplicasArg, reply *gfs.GetReplicasR
 					// FIXME: deadlock solved
 					// by releasing chunkMetadata Lock before acquiring chunkServerInfo Lock for adding garbage
 					// chunkServerInfo and chunkMetadata
+					gfs.DebugMsgToFile(fmt.Sprintf("RPCGetReplicas chunk handle <%d> call chunk server <%s>" +
+						"check version error <%s> with version <%d>", args.Handle, addr, err, checkVersionArg.Version), gfs.MASTER, m.address)
 					staleLock.Lock()
 					staleServers = append(staleServers, addr)
 					staleLock.Unlock()
@@ -674,6 +693,7 @@ func (m *Master) RPCGetReplicas(args gfs.GetReplicasArg, reply *gfs.GetReplicasR
 			reply.Secondaries = append(reply.Secondaries, v)
 		}
 	}
+	gfs.DebugMsgToFile(fmt.Sprintf("RPCGetReplicas chunk handle <%d> release chunk metadata lock", args.Handle), gfs.MASTER, m.address)
 	chunkMetadata.Unlock()
 	// add garbage
 	for _, v := range staleServers {
@@ -814,6 +834,7 @@ func (m *Master) createChunk(fileMetadata *FileMetadata, addrs []string) (int64,
 
 		err := gfs.Call(v, "ChunkServer.RPCCreateChunk", gfs.CreateChunkArg{Handle: handle}, &r)
 		if err == nil {
+			gfs.DebugMsgToFile(fmt.Sprintf("CreateChunk append location <%s> to chunk metadata", v), gfs.MASTER, m.address)
 			chunkMetadata.location = append(chunkMetadata.location, v)
 			success = append(success, v)
 			chunkServerInfoFound, infoOk := m.chunkServerInfos.Get(v)

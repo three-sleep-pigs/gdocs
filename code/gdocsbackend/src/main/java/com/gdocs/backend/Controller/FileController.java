@@ -29,13 +29,6 @@ public class FileController {
         return fileService.addFile(username,filename);
     }
 
-    @RequestMapping("/getFile")
-    public FileReply getFileByID(@RequestBody Map<String,Integer> params)
-    {
-        Integer id = params.get("id");
-        return fileService.getFileByID(id);
-    }
-
     @RequestMapping("/editFile")
     public Integer editFile(@RequestParam(name = "name") String username,@RequestBody Map<String,Object> params)
     {

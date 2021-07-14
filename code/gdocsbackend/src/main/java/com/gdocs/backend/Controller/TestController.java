@@ -1,5 +1,6 @@
 package com.gdocs.backend.Controller;
 
+import org.springframework.stereotype.Controller;
 import org.springframework.ui.ModelMap;
 import org.springframework.util.ResourceUtils;
 import org.springframework.web.bind.annotation.*;
@@ -9,7 +10,7 @@ import java.io.*;
 import java.net.URLDecoder;
 import java.util.Random;
 
-@RestController
+@Controller
 public class TestController {
 
     @GetMapping("/home")
@@ -18,10 +19,11 @@ public class TestController {
     }
 
     @GetMapping("/")
+    //http://localhost
     public String onlineProductExcel(ModelMap modelMap, HttpServletRequest request, @RequestParam(value = "id", defaultValue = "27") int id) {
         String userName = "aa";
         modelMap.addAttribute("recordId", "-1");
-        modelMap.addAttribute("userName", 1);
+        modelMap.addAttribute("userName", id);
         modelMap.addAttribute("title", "协同演示");
         return "online_excel";
     }
@@ -29,7 +31,7 @@ public class TestController {
     @PostMapping("/publicApi/excel/downData")
     @ResponseBody
     //http://localhost/publicApi/excel/downData?id=1
-    public String downExcelData(ModelMap modelMap, @RequestParam(value = "id", defaultValue = "-1") int id) {
+    public String downExcelData(@RequestParam(value = "id", defaultValue = "-1") int id) {
         /***
          * 1.从数据库中读取id luckysheet记录
          */
@@ -59,7 +61,8 @@ public class TestController {
         } catch (Exception e) {
             e.printStackTrace();
         }
-        System.out.print(result);
-        return result.toString();
+        System.out.print(result.toString());
+        String title = "[{\"name\":\"1\",\"index\":\"1\",\"status\":1,\"order\":\"0\",\"celldata\":[";
+        return title + result.toString()+"]}]";
     }
 }
