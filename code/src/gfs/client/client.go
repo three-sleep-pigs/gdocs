@@ -20,23 +20,27 @@ type Client struct {
 }
 
 // NewClient starts a new gfs client.
-func NewClient(master string, addr string) {
+func NewClient(master string, addr string) *Client {
 	c := &Client{
 		master:   master,
 		replicaBuffer: newReplicaBuffer(master, gfs.ReplicaBufferTick),
 		identifier: addr,
 	}
 
-	http.HandleFunc("/create", c.CreateHandler)
-	http.HandleFunc("/delete", c.DeleteHandler)
-	http.HandleFunc("/rename", c.RenameHandler)
-	http.HandleFunc("/mkdir", c.MkdirHandler)
-	http.HandleFunc("/read", c.ReadHandler)
-	http.HandleFunc("/write", c.WriteHandler)
-	http.HandleFunc("/append", c.AppendHandler)
+	go func() {
+		http.HandleFunc("/create", c.CreateHandler)
+		http.HandleFunc("/delete", c.DeleteHandler)
+		http.HandleFunc("/rename", c.RenameHandler)
+		http.HandleFunc("/mkdir", c.MkdirHandler)
+		http.HandleFunc("/read", c.ReadHandler)
+		http.HandleFunc("/write", c.WriteHandler)
+		http.HandleFunc("/append", c.AppendHandler)
 
-	err := http.ListenAndServe(addr, nil)
-	fmt.Println("[client]server fail:", err)
+		err := http.ListenAndServe(addr, nil)
+		fmt.Println("[client]server fail:", err)
+	}()
+
+	return c
 }
 
 func (c *Client) CreateHandler(w http.ResponseWriter, r *http.Request) {

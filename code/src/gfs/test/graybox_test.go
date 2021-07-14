@@ -35,8 +35,8 @@ func getRemoveDirs() [4]string {
 	return [4]string{"../msroot","../csroot1", "../csroot2", "../csroot3"}
 }
 
-func RunClient() {
-	client.NewClient(msAddr, "127.0.0.1:8084")
+func RunClient() *client.Client {
+	return client.NewClient(msAddr, "127.0.0.1:8084")
 }
 
 func RunMaster() *master.Master {
@@ -93,7 +93,7 @@ func errorAll(ch chan error, n int, t *testing.T) {
 func gfsRun() {
 	m = RunMaster()
 	cs = RunChunkServers()
-	RunClient()
+	c = RunClient()
 }
 
 func gfsShutDown() {

@@ -66,8 +66,20 @@ func runClient() {
 		printUsage()
 		return
 	}
-	fmt.Println("print Ctrl+C to shut down client")
-	client.NewClient(os.Args[3], os.Args[2])
+	c := client.NewClient(os.Args[3], os.Args[2])
+	if c == nil {
+		fmt.Println("start client fail")
+		return
+	}
+
+	for {
+		fmt.Println("print \"q\" to shut down client")
+		reader := bufio.NewReader(os.Stdin)
+		res,_ := reader.ReadString('\n')
+		if res[:1] == "q" {
+			return
+		}
+	}
 }
 
 func main() {
