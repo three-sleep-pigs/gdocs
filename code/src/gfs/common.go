@@ -2,13 +2,12 @@ package gfs
 
 import (
 	"os"
-	"syscall"
 	"time"
 )
 
 type DataBufferID struct {
 	Handle int64
-	Time   int
+	Time   int64
 }
 
 type ChunkReplicaInfo struct {
@@ -67,8 +66,8 @@ func DebugMsgToFile(msg string, t TYPE, description string) {
 	}
 	defer file.Close()
 	// use file lock to support concurrent write
-	syscall.Flock(int(file.Fd()), syscall.LOCK_EX)
-	defer syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+	//syscall.Flock(int(file.Fd()), syscall.LOCK_EX)
+	//defer syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
 
 	file.WriteString(toWrite)
 }

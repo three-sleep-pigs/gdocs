@@ -50,7 +50,7 @@ func newDataBuffer(expire, tick time.Duration) *downloadBuffer {
 // NewDataID allocate a new DataID for given handle
 func NewDataID(handle int64) gfs.DataBufferID {
 	now := time.Now()
-	timeStamp := now.Nanosecond() + now.Second()*1000 + now.Minute()*60*1000
+	timeStamp := int64(now.Nanosecond()) + int64(now.Second())*1000000000 + int64(now.Minute())*60*1000000000
 	return gfs.DataBufferID{Handle: handle, Time: timeStamp}
 }
 
