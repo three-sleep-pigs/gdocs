@@ -3,17 +3,20 @@ package com.gdocs.backend.Service;
 import com.alibaba.fastjson.JSON;
 import com.gdocs.backend.Configure.GetHttpSessionConfigurator;
 import com.gdocs.backend.Util.JSONParse;
-import com.gdocs.backend.Util.MyStringUtil;
 import com.gdocs.backend.Util.Pako_GzipUtils;
 import com.gdocs.backend.WsResultBean;
 import com.mongodb.DBObject;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.util.ResourceUtils;
 
 import javax.websocket.*;
 import javax.websocket.server.PathParam;
 import javax.websocket.server.ServerEndpoint;
-import java.util.Objects;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.net.URLDecoder;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -48,7 +51,7 @@ public class OnlineExcelWebSocketServer {
      */
     @OnOpen
     public void onOpen(Session session, @PathParam("name") String name) {
-//        正常情况下，可以用登录的用户名或者token来作为userId
+        //正常情况下，可以用登录的用户名或者token来作为userId
 //        如下可以获取到httpSession，与当前的session(socket)不是一样的
 //        HttpSession httpSession = (HttpSession) config.getUserProperties().get(HttpSession.class.getName());
 //        userId = String.valueOf(httpSession.getAttribute("你的token key"));
@@ -77,27 +80,47 @@ public class OnlineExcelWebSocketServer {
         if (message.equals("rub")) {//rub代表心跳包
             return;
         }
+        //写入文件
+        String contentReal = Pako_GzipUtils.unCompressToURI(message);
+        DBObject bson = null;
+        try {
+            bson = (DBObject) JSONParse.parse(contentReal);
+        } catch (Exception ex) {
+            return;
+        }
+        if (bson != null) {
+            if (bson.get("t").equals("v")) {
+                //更改数据并存储
+                log.info(bson.toString());
+                FileWriter writer = null;
+                File file = null;
+                try {
+                    file = new File(URLDecoder.decode(ResourceUtils.getURL("classpath:static/exceldata").getPath(), "utf-8"));
+                    writer = new FileWriter(file,true);
+                } catch (IOException e) {
+                    log.error("打开文件失败");
+                }
+                try {
+                    writer.write(bson.toString()+",");
+                    writer.flush();
+                    writer.close();
+                } catch (IOException e) {
+                    log.error("写入文件失败");
+                }
+            }
+        }
 
+        //转发操作
         for (String key : tokenMap.keySet()) {
             if (!key.equals(userId)) {
-                OnlineExcelWebSocketServer socketServer = tokenMap.get(key);
-                WsResultBean wsResultBean = new WsResultBean();
-                log.info("消息解压前：" + MyStringUtil.getStringShow(message));
-                String contentReal = Pako_GzipUtils.unCompressToURI(message);
-                log.info("消息解压后：" + MyStringUtil.getStringShow(contentReal));
+                OnlineExcelWebSocketServer socketServer = (OnlineExcelWebSocketServer) tokenMap.get(key);
+                WsResultBean wsResultBean = null;
+                wsResultBean = new WsResultBean();
                 wsResultBean.setData(contentReal);
                 wsResultBean.setStatus(0);
                 wsResultBean.setUsername(userId);
                 wsResultBean.setId(wsResultBean.getUsername());
                 wsResultBean.setReturnMessage("success");
-
-
-                DBObject bson = null;
-                try {
-                    bson = (DBObject) JSONParse.parse(wsResultBean.getData());
-                } catch (Exception ex) {
-                    return;
-                }
                 if (bson != null) {
                     if (bson.get("t").equals("mv")) {
                         //更新选区显示
@@ -111,7 +134,6 @@ public class OnlineExcelWebSocketServer {
             }
         }
     }
-
 
     @OnError
     public void onError(Session session, Throwable error) {
@@ -131,8 +153,5 @@ public class OnlineExcelWebSocketServer {
         }
     }
 
-    @Override
-    public int hashCode() {
-        return Objects.hash(session);
-    }
+
 }
