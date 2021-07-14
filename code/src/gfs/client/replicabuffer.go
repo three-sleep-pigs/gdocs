@@ -30,7 +30,7 @@ func newReplicaBuffer(ms string, tick time.Duration) *ReplicaBuffer {
 			now := time.Now()
 			buf.Lock()
 			for id, item := range buf.buffer {
-				if item.Expire.Before(now) {
+				if item.Expire.Before(now) || item.BufferExpire.Before(now) {
 					delete(buf.buffer, id)
 				}
 			}
@@ -44,8 +44,9 @@ func newReplicaBuffer(ms string, tick time.Duration) *ReplicaBuffer {
 func (buf *ReplicaBuffer) Get(handle int64) (*gfs.ChunkReplicaInfo, error) {
 	buf.Lock()
 	defer buf.Unlock()
+	now := time.Now()
 	info, ok := buf.buffer[handle]
-	if ok {
+	if ok && info.BufferExpire.After(now) && info.Expire.After(now) {
 		return info, nil
 	}
 	// ask master to send one
@@ -55,7 +56,12 @@ func (buf *ReplicaBuffer) Get(handle int64) (*gfs.ChunkReplicaInfo, error) {
 		return nil, err
 	}
 
-	info = &gfs.ChunkReplicaInfo{Primary: l.Primary, Expire: l.Expire, Secondaries: l.Secondaries}
+	info = &gfs.ChunkReplicaInfo{
+		Primary: l.Primary,
+		Expire: l.Expire,
+		Secondaries: l.Secondaries,
+		BufferExpire: time.Now().Add(gfs.ReplicaBufferExpire),
+	}
 	buf.buffer[handle] = info
 	return info, nil
 }
