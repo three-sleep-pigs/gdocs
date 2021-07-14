@@ -19,10 +19,6 @@ const (
 	csNum = 3
 )
 
-const (
-	N     = 100
-)
-
 func getCsRoots() [3]string {
 	return [3]string{"../csroot1", "../csroot2", "../csroot3"}
 }
@@ -93,7 +89,6 @@ func errorAll(ch chan error, n int, t *testing.T) {
 func gfsRun() {
 	m = RunMaster()
 	cs = RunChunkServers()
-	c = RunClient()
 }
 
 func gfsShutDown() {
@@ -104,6 +99,15 @@ func gfsClean() {
 	CleanFiles()
 }
 
+/*
+ *  TEST SUITE 0 - TEST CLIENT START
+ */
+func TestClientStart(t *testing.T)  {
+	c = RunClient()
+	if c == nil {
+		t.Error("start a client fail")
+	}
+}
 /*
  *  TEST SUITE 1 - MASTER FILE NAMESPACE
  */
@@ -127,8 +131,10 @@ func TestCreateFile(t *testing.T) {
 }
 
 func TestDeleteFiles(t *testing.T) {
-	gfsRun()
+	println("GFS FILES CLEAN")
+	gfsClean()
 	println("GFS START")
+	gfsRun()
 	time.Sleep(time.Duration(5) * time.Second)
 	err := m.RPCCreateFile(gfs.CreateFileArg{Path: "/test1.txt"}, &gfs.CreateFileReply{})
 	if err != nil {
@@ -148,13 +154,13 @@ func TestDeleteFiles(t *testing.T) {
 	time.Sleep(time.Duration(5) * time.Second)
 	println("GFS SHUTDOWN")
 	gfsShutDown()
-	println("GFS FILES CLEAN")
-	gfsClean()
 }
 
 func TestMkdir(t *testing.T) {
-	gfsRun()
+	println("GFS FILES CLEAN")
+	gfsClean()
 	println("GFS START")
+	gfsRun()
 	time.Sleep(time.Duration(5) * time.Second)
 	err := m.RPCMkdir(gfs.MkdirArg{Path: "/dir1"}, &gfs.MkdirReply{})
 	if err != nil {
@@ -167,13 +173,13 @@ func TestMkdir(t *testing.T) {
 	time.Sleep(time.Duration(5) * time.Second)
 	println("GFS SHUTDOWN")
 	gfsShutDown()
-	println("GFS FILES CLEAN")
-	gfsClean()
 }
 
 func TestRenameFile(t *testing.T) {
-	gfsRun()
+	println("GFS FILES CLEAN")
+	gfsClean()
 	println("GFS START")
+	gfsRun()
 	time.Sleep(time.Duration(5) * time.Second)
 	err := m.RPCCreateFile(gfs.CreateFileArg{Path: "/test1.txt"}, &gfs.CreateFileReply{})
 	if err != nil {
@@ -190,13 +196,13 @@ func TestRenameFile(t *testing.T) {
 	time.Sleep(time.Duration(5) * time.Second)
 	println("GFS SHUTDOWN")
 	gfsShutDown()
-	println("GFS FILES CLEAN")
-	gfsClean()
 }
 
 func TestFileNameSpaceConcurrently(t *testing.T) {
-	gfsRun()
+	println("GFS FILES CLEAN")
+	gfsClean()
 	println("GFS START")
+	gfsRun()
 	time.Sleep(time.Duration(5) * time.Second)
 	// create files concurrently
 	var wg sync.WaitGroup
@@ -226,16 +232,16 @@ func TestFileNameSpaceConcurrently(t *testing.T) {
 	time.Sleep(time.Duration(5) * time.Second)
 	println("GFS SHUTDOWN")
 	gfsShutDown()
-	println("GFS FILES CLEAN")
-	gfsClean()
 }
 
 /*
  *  TEST SUITE 2 - MASTER CHUNK
  */
 func TestRPCGetChunkHandle(t *testing.T) {
-	gfsRun()
+	println("GFS FILES CLEAN")
+	gfsClean()
 	println("GFS START")
+	gfsRun()
 	time.Sleep(time.Duration(5) * time.Second)
 	err := m.RPCCreateFile(gfs.CreateFileArg{Path: "/test1.txt"}, &gfs.CreateFileReply{})
 	if err != nil {
@@ -261,13 +267,13 @@ func TestRPCGetChunkHandle(t *testing.T) {
 	time.Sleep(time.Duration(5) * time.Second)
 	println("GFS SHUTDOWN")
 	gfsShutDown()
-	println("GFS FILES CLEAN")
-	gfsClean()
 }
 
 func TestGetReplicas(t *testing.T) {
-	gfsRun()
+	println("GFS FILES CLEAN")
+	gfsClean()
 	println("GFS START")
+	gfsRun()
 	time.Sleep(time.Duration(5) * time.Second)
 	err := m.RPCCreateFile(gfs.CreateFileArg{Path: "/test1.txt"}, &gfs.CreateFileReply{})
 	if err != nil {
@@ -286,13 +292,13 @@ func TestGetReplicas(t *testing.T) {
 	time.Sleep(time.Duration(5) * time.Second)
 	println("GFS SHUTDOWN")
 	gfsShutDown()
-	println("GFS FILES CLEAN")
-	gfsClean()
 }
 
 func TestGetFileInfo(t *testing.T) {
-	gfsRun()
+	println("GFS FILES CLEAN")
+	gfsClean()
 	println("GFS START")
+	gfsRun()
 	time.Sleep(time.Duration(5) * time.Second)
 	var r1 gfs.GetFileInfoReply
 	err := m.RPCGetFileInfo(gfs.GetFileInfoArg{Path: "/test1.txt"}, &r1)
@@ -310,8 +316,6 @@ func TestGetFileInfo(t *testing.T) {
 	time.Sleep(time.Duration(5) * time.Second)
 	println("GFS SHUTDOWN")
 	gfsShutDown()
-	println("GFS FILES CLEAN")
-	gfsClean()
 }
 
 /*

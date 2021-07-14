@@ -43,6 +43,10 @@ func NewClient(master string, addr string) *Client {
 	return c
 }
 
+func (c *Client) Shutdown() {
+
+}
+
 func (c *Client) CreateHandler(w http.ResponseWriter, r *http.Request) {
 	var request CreateRequest
 	var response CreateResponse
@@ -421,7 +425,7 @@ func (c *Client) Read(path string, offset int64, data []byte) (n int64, err erro
 		}
 	}
 
-	if err != nil && err == fmt.Errorf("read EOF") {
+	if err != nil && fmt.Sprintf("%s", err) == "read EOF" {
 		return pos, io.EOF
 	} else {
 		return pos, err
