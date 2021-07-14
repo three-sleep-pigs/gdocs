@@ -2,6 +2,7 @@ package com.gdocs.backend.Dao;
 
 import com.gdocs.backend.Entity.GFile;
 
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.Optional;
 
@@ -10,4 +11,5 @@ public interface GFileDao {
     Optional<GFile> getGFileById(Integer id);
     GFile saveFile(GFile gFile);
     int deleteGFileById(Integer id);
+    int setRecentById(Timestamp recent, Integer id);
 }

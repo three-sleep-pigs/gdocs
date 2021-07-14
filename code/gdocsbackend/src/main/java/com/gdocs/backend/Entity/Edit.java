@@ -4,6 +4,7 @@ import lombok.Data;
 
 import javax.persistence.*;
 import java.sql.Time;
+import java.sql.Timestamp;
 
 @Data
 @Entity
@@ -20,5 +21,5 @@ public class Edit {
     private String editor;
 
     @Basic
-    private Time edittime;
+    private Timestamp edittime;
 }

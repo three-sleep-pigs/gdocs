@@ -7,5 +7,5 @@ import java.util.List;
 
 public interface EditDao {
     List<Edit> getEditsByFileId(Integer fileId);
-    int insertEdit(Integer fileId, String editor, Time editTime);
+    Edit save(Edit edit);
 }

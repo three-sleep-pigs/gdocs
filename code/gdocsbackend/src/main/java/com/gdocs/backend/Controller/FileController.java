@@ -4,11 +4,7 @@ import com.gdocs.backend.Entity.GFile;
 import com.gdocs.backend.Reply.FileReply;
 import com.gdocs.backend.Service.FileService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.relational.core.sql.In;
-import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
@@ -26,7 +22,7 @@ public class FileController {
     }
 
     @RequestMapping("/addFile")
-    public FileReply addFile(@RequestBody Map<String,String> params)
+    public Integer addFile(@RequestBody Map<String,String> params)
     {
         String username = params.get("username");
         String filename = params.get("filename");
@@ -40,13 +36,16 @@ public class FileController {
         return fileService.getFileByID(id);
     }
 
-//    @RequestMapping("/editFile")
-//    public Integer editFile(@RequestBody Map<String,String> params)
-//    {
-//        String username = params.get("username");
-//        Integer id = Integer.parseInt(params.get("id"));
-//
-//    }
+    @RequestMapping("/editFile")
+    public Integer editFile(@RequestParam(name = "name") String username,@RequestBody Map<String,Object> params)
+    {
+        String index = params.get("i").toString();
+        String row = params.get("r").toString();
+        String column = params.get("c").toString();
+        String value = params.get("v").toString();
+        fileService.editFile(username,index,row,column,value);
+        return 200;
+    }
 
     @RequestMapping("/deleteFile")
     public Integer deleteFile(@RequestBody Map<String,String> params)

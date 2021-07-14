@@ -2,23 +2,21 @@ package com.gdocs.backend.ServiceImpl;
 
 import com.gdocs.backend.Dao.EditDao;
 import com.gdocs.backend.Dao.GFileDao;
+import com.gdocs.backend.Entity.Edit;
 import com.gdocs.backend.Entity.GFile;
 import com.gdocs.backend.Reply.FileReply;
 import com.gdocs.backend.Service.FileService;
 import com.gdocs.backend.Util.CellData;
-import org.apache.poi.xssf.usermodel.XSSFCell;
-import org.apache.poi.xssf.usermodel.XSSFRow;
-import org.apache.poi.xssf.usermodel.XSSFSheet;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import com.gdocs.backend.Util.CellType;
+import com.gdocs.backend.Util.Sheet;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.util.List;
-import java.util.Optional;
+import java.io.*;
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
+import java.util.*;
 
 @Service
 public class FileServiceImpl implements FileService {
@@ -39,22 +37,37 @@ public class FileServiceImpl implements FileService {
     public FileReply getFileByID(Integer id)
     {
         FileReply reply = new FileReply();
+        List<Sheet> sheets = new ArrayList<>();
+        Sheet sheet = new Sheet();
+        Map<Integer,Map<Integer,CellData>> CellData = new HashMap<>();
+        CellType cellType = new CellType();
         Optional<GFile> optionalGFile = gFileDao.getGFileById(id);
         if(optionalGFile.isPresent()){
             GFile gFile = optionalGFile.get();
-            reply.setGFile(gFile);
-            File file = new File(DIR_PATH+id+".xls");
-            if (file.exists()) {
-                reply.setStatus(200);
-                reply.setFile(file);
+            sheet.setName(gFile.getFilename());
+            sheet.setIndex(gFile.getId().toString());
+            sheet.setOrder(0);
+            sheet.setStatus(1);
+            ArrayList<String> arrayList = new ArrayList<>();
+            try {
+                FileReader reader = new FileReader(DIR_PATH + id + ".txt");
+                BufferedReader bufferedReader = new BufferedReader(reader);
+                String string;
+                while ((string = bufferedReader.readLine()) != null) {
+                    arrayList.add(string);
+                }
+                bufferedReader.close();
+                reader.close();
+            } catch (IOException e) {
+                reply.setStatus(401);//文件打开失败
             }
-            else {
-                reply.setStatus(402);
-            }
+            System.out.print(arrayList);
+            reply.setStatus(200);
         }
         else {
-            reply.setStatus(401);
+            reply.setStatus(401);//文件打开失败
         }
+        reply.setSheets(sheets);
         return reply;
     }
 
@@ -67,7 +80,7 @@ public class FileServiceImpl implements FileService {
             GFile gFile = optionalGFile.get();
             if (gFile.getCreator().equals(username))
             {
-                File file = new File(DIR_PATH+id.toString()+".xls");
+                File file = new File(DIR_PATH+id.toString()+".txt");
                 if (file.exists()) {
                     if (file.delete()) {
                         if (gFileDao.deleteGFileById(id) == 1)
@@ -91,56 +104,54 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
-    public FileReply addFile(String username,String filename)
+    public Integer addFile(String username,String filename)
     {
-        FileReply reply = new FileReply();
         GFile gFile = new GFile();
         gFile.setFilename(filename);
         gFile.setCreator(username);
+        gFile.setRecent(Timestamp.valueOf(LocalDateTime.now()));
         if (gFileDao.saveFile(gFile) != null)
         {
-            reply.setGFile(gFile);
-            File file = new File(DIR_PATH + gFile.getId() + ".xls");
+            File file = new File(DIR_PATH + gFile.getId() + ".txt");
             if (!file.exists()) {
                 try {
                     file.createNewFile();
                 } catch (IOException e) {
-                    reply.setStatus(400);//创建文件失败
-                    return reply;
+                    return 400;//创建文件失败
                 }
             }
-            reply.setStatus(200);
-            reply.setFile(file);
+            Edit edit = new Edit();
+            edit.setFileid(gFile.getId());
+            edit.setEditor(username);
+            edit.setEdittime(gFile.getRecent());
+            editDao.save(edit);
+            return 200;
         }
-        else {
-            reply.setStatus(400);
-        }
-        return reply;
+        return 400;
     }
 
     @Override
-    public Integer editFile(String username,Integer fileId,List<CellData> cellDataList)
+    public Integer editFile(String username, String index, String row, String column, String value)
     {
-        XSSFWorkbook xssfWorkbook;
+        FileWriter writer;
         try {
-            xssfWorkbook = new XSSFWorkbook(new FileInputStream(new File((DIR_PATH + fileId.toString() + ".xls"))));
+            writer = new FileWriter(DIR_PATH + index + ".txt",true);
         } catch (IOException e) {
-            return 401;//打开文件失败
+            return 401;//文件打开失败
         }
-
-        XSSFSheet sheet = xssfWorkbook.getSheetAt(0);
-
-        for (CellData cellData : cellDataList) {
-            XSSFRow xssfRow = sheet.getRow(cellData.getRow());
-            XSSFCell xssfCell = xssfRow.getCell(cellData.getColumn());
-            xssfCell.setCellValue(cellData.getData());
-        }
-
         try {
-            xssfWorkbook.write(new FileOutputStream(new File(DIR_PATH + fileId.toString() + ".xls")));
+            writer.write(row + " " + column + " " + value.toString() + "\r\n");
+            writer.flush();
+            writer.close();
         } catch (IOException e) {
             return 402;//写入文件失败
         }
+        Edit edit = new Edit();
+        edit.setEditor(username);
+        edit.setFileid(Integer.parseInt(index));
+        edit.setEdittime(Timestamp.valueOf(LocalDateTime.now()));
+        editDao.save(edit);
+        gFileDao.setRecentById(edit.getEdittime(),Integer.parseInt(index));
         return 200;
     }
 }

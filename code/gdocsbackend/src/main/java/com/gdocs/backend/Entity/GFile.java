@@ -3,6 +3,7 @@ package com.gdocs.backend.Entity;
 import lombok.Data;
 
 import javax.persistence.*;
+import java.sql.Timestamp;
 
 @Data
 @Entity
@@ -17,4 +18,7 @@ public class GFile {
 
     @Basic
     private String creator;
+
+    @Basic
+    private Timestamp recent;
 }

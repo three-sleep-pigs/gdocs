@@ -2,7 +2,6 @@ package com.gdocs.backend.Service;
 
 import com.gdocs.backend.Entity.GFile;
 import com.gdocs.backend.Reply.FileReply;
-import com.gdocs.backend.Util.CellData;
 
 import java.util.List;
 
@@ -13,7 +12,7 @@ public interface FileService {
 
     Integer deleteFileByID(String username,Integer id);
 
-    FileReply addFile(String username,String filename);
+    Integer addFile(String username,String filename);
 
-    Integer editFile(String username,Integer fileId,List<CellData> cellDataList);
+    Integer editFile(String username, String index, String row, String column, String value);
 }
