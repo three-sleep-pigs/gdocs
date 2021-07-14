@@ -91,6 +91,7 @@ const (
 	// chunk server
 	HeartbeatInterval   = 100 * time.Millisecond
 	GarbageCollectionInterval = 2 * time.Hour
+	MutationMaxTime 	= 10 * time.Second
 
 	// client
 	ReplicaBufferTick 	= 500 * time.Millisecond
