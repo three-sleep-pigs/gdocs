@@ -72,4 +72,4 @@ class LoginView extends React.Component{
     }
 }
 
-export default LoginView;
+export default withRouter(LoginView);
