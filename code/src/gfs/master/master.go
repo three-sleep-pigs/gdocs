@@ -4,6 +4,7 @@ import (
 	"../../gfs"
 	"../cmap"
 	"fmt"
+	"github.com/samuel/go-zookeeper/zk"
 	"net"
 	"net/rpc"
 	"os"
@@ -19,21 +20,7 @@ type Master struct {
 	address    string // master server address
 	serverRoot string
 	l          net.Listener
-
-
-	nextHandle int64
-
-	// all keys from the following 3 maps are string
-	// initialization in new and serve
-	// from full path to file metadata
-	fileNamespace cmap.ConcurrentMap
-	// from chunk handle to chunk metadata
-	chunkNamespace cmap.ConcurrentMap
-	// from chunk server address to chunk server info
-	chunkServerInfos cmap.ConcurrentMap
-
-	// list of chunk handles need a new replicas
-	replicasNeedList []int64
+	zk         *zk.Conn
 }
 
 type FileMetadata struct {
