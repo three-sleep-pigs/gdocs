@@ -56,4 +56,10 @@ public class GFileDaoImpl implements GFileDao {
     {
         return gFileRepository.setRecentById(recent, id);
     }
+
+    @Override
+    public int setLengthById(Integer length,Integer id)
+    {
+        return gFileRepository.setLengthById(length, id);
+    }
 }

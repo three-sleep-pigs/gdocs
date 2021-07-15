@@ -21,5 +21,8 @@ public class Edit {
     private String editor;
 
     @Basic
+    private Integer length;
+
+    @Basic
     private Timestamp edittime;
 }

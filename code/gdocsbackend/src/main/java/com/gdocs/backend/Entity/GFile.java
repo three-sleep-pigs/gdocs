@@ -20,6 +20,9 @@ public class GFile {
     private String creator;
 
     @Basic
+    private Integer length;
+
+    @Basic
     private boolean deleted;
 
     @Basic

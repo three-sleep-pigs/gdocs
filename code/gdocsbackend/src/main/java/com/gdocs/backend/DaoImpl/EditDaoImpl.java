@@ -25,4 +25,10 @@ public class EditDaoImpl implements EditDao {
     {
         return editRepository.save(edit);
     }
+
+    @Override
+    public Edit getById(Integer id)
+    {
+        return editRepository.getById(id);
+    }
 }

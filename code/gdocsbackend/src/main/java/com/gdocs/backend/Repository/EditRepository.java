@@ -7,4 +7,6 @@ import java.util.List;
 
 public interface EditRepository extends JpaRepository<Edit,Integer> {
     List<Edit> getEditsByFileid(Integer fileId);
+
+    Edit getEditById(Integer id);
 }

@@ -45,9 +45,9 @@ class MenuView extends React.Component{
                 'Content-Type':'application/json;charset=UTF-8',
                 'Access-Control-ALLow-Origin':"*"
             },
-            body:{
+            body:JSON.stringify({
                 username:username,
-            },
+            }),
             mode:'cors',
             cache:"default"})
             .then(response => response.json())
@@ -79,12 +79,8 @@ class MenuView extends React.Component{
             .then(response => response.json())
             .then(data => {
                 if(data===200){
-                    that.setState(
-                        {
-                            files:that.state.files.filter(item=>item.id!==id),
-                            bin:that.state.bin.push(item=>item.id===id)
-                        }
-                    )
+                    this.getFiles()
+                    this.getBin()
                 }
                 else if(data===401){
                     alert("删除失败");
@@ -119,12 +115,8 @@ class MenuView extends React.Component{
             .then(response => response.json())
             .then(data => {
                 if(data===200){
-                    that.setState(
-                        {
-                            bin:that.state.bin.filter(item=>item.id!==id),
-                            files:that.state.files.push(item=>item.id===id)
-                        }
-                    )
+                    this.getFiles()
+                    this.getBin()
                 }
                 else if(data===400){
                     alert("恢复文件失败");

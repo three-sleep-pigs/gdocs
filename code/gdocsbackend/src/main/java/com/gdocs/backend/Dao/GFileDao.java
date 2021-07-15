@@ -14,4 +14,5 @@ public interface GFileDao {
     int deleteGFileById(Integer id);
     int recoverGFileById(Integer id);
     int setRecentById(Timestamp recent, Integer id);
+    int setLengthById(Integer length,Integer id);
 }

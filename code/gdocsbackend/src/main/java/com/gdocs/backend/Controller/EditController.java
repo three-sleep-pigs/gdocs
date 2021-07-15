@@ -37,8 +37,7 @@ public class EditController {
         /***
          * 1.从数据库中读取id luckysheet记录
          */
-        //return "[{\"name\":\"filename\" ,\"index\":\"index \",\"status\":1,\"order\":\"0\",\"celldata\":[]}]";
-        System.out.print(id);
+        System.out.print(id + "\r");
         return editService.downExcelData(id);
     }
 

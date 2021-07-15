@@ -97,7 +97,7 @@ public class OnlineExcelWebSocketServer {
             jsonObject.put("username", userId);
             jsonObject.put("id", fileId);
             try {
-                s = HTTPUtil.HttpRestClient("http://localhost:8888/editFile", HttpMethod.POST, jsonObject);
+                s = HTTPUtil.HttpRestClient(LOCAL_URL + EDIT_URL, HttpMethod.POST, jsonObject);
                 if (s == "400") {
                     log.error("插入编辑记录失败");
                 }
@@ -142,6 +142,18 @@ public class OnlineExcelWebSocketServer {
                     log.error(reply.toString());
                     log.error("写dfs失败");
                     return;
+                }
+                String to = bson.toString()+",";
+                JSONObject object = new JSONObject();
+                object.put("id", fileId);
+                object.put("append",to.length());
+                try {
+                    s = HTTPUtil.HttpRestClient(LOCAL_URL + UPDATE_URL, HttpMethod.POST, object);
+                    if (s == "400") {
+                        log.error("更新文件失败");
+                    }
+                } catch (IOException e) {
+                    log.error("连接文件更新失败");
                 }
             }
         }

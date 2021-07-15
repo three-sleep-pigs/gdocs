@@ -33,4 +33,9 @@ public interface GFileRepository extends JpaRepository<GFile,Integer> {
     @Modifying
     @Query(value="update gfile set recent=?  where id=?",nativeQuery=true)
     int setRecentById(Timestamp recent,Integer id);
+
+    @Transactional
+    @Modifying
+    @Query(value="update gfile set length=?  where id=?",nativeQuery=true)
+    int setLengthById(Integer length,Integer id);
 }

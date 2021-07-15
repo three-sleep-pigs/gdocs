@@ -8,4 +8,5 @@ import java.util.List;
 public interface EditDao {
     List<Edit> getEditsByFileId(Integer fileId);
     Edit save(Edit edit);
+    Edit getById(Integer id);
 }

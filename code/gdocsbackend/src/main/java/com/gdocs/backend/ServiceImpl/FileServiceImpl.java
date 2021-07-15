@@ -49,6 +49,7 @@ public class FileServiceImpl implements FileService {
         GFile gFile = new GFile();
         gFile.setFilename(filename);
         gFile.setCreator(username);
+        gFile.setLength(0);
         gFile.setDeleted(false);
         gFile.setRecent(Timestamp.valueOf(LocalDateTime.now()));
         if (gFileDao.saveFile(gFile) != null)
@@ -64,12 +65,14 @@ public class FileServiceImpl implements FileService {
                 return fileReply;
             }
             Map<String,Object> reply= (Map<String,Object>)JSONObject.parse(s);
+            System.out.print(reply + "\r");
            if (reply.get("Success").equals(true))
            {
                Edit edit = new Edit();
                edit.setFileid(gFile.getId());
                edit.setEditor(username);
                edit.setEdittime(gFile.getRecent());
+               edit.setLength(0);
                editDao.save(edit);
                fileReply.setStatus(200);
                fileReply.setGfile(gFile);
@@ -127,14 +130,50 @@ public class FileServiceImpl implements FileService {
     @Override
     public Integer editFileByID(String username,Integer fileId)
     {
+        Optional<GFile> optionalGFile = gFileDao.getGFileById(fileId);
         Edit edit = new Edit();
-        edit.setEditor(username);
-        edit.setFileid(fileId);
-        edit.setEdittime(Timestamp.valueOf(LocalDateTime.now()));
+        if (optionalGFile.isPresent())
+        {
+            GFile gFile = optionalGFile.get();
+            edit.setEditor(username);
+            edit.setFileid(fileId);
+            edit.setLength(gFile.getLength());
+            edit.setEdittime(Timestamp.valueOf(LocalDateTime.now()));
+            gFileDao.setRecentById(edit.getEdittime(),fileId);
+        }
+
         if (editDao.save(edit) == null)
         {
             return 400;
         }
         return 200;
+    }
+
+    @Override
+    public Integer updateFileByID(Integer fileId,Integer append)
+    {
+        Optional<GFile> optionalGFile = gFileDao.getGFileById(fileId);
+        if (optionalGFile.isPresent())
+        {
+            GFile gFile = optionalGFile.get();
+            Integer length = gFile.getLength();
+            gFileDao.setLengthById(length+append,fileId);
+            return 200;
+        }
+        return 400;
+    }
+
+    @Override
+    public List<Edit> getEditsByFileId(Integer fileId)
+    {
+        return editDao.getEditsByFileId(fileId);
+    }
+
+    @Override
+    public Integer rollback(Integer fileId,Integer editId)
+    {
+        if (gFileDao.setLengthById(editDao.getById(editId).getLength(),fileId) == 1)
+            return 200;
+        return 400;
     }
 }
