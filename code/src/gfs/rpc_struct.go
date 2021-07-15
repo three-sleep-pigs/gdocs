@@ -119,6 +119,7 @@ type MkdirReply struct {
 type WriteChunkArg struct {
 	DbID        DataBufferID
 	Offset      int64
+	Expire		time.Time
 	Secondaries []string
 }
 
@@ -138,6 +139,7 @@ type ReadChunkReply struct {
 
 type AppendChunkArg struct {
 	DbID        DataBufferID
+	Expire		time.Time
 	Secondaries []string
 }
 
