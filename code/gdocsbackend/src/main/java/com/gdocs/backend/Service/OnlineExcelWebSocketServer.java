@@ -3,6 +3,7 @@ package com.gdocs.backend.Service;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.gdocs.backend.Configure.GetHttpSessionConfigurator;
+import com.gdocs.backend.Dao.EditDao;
 import com.gdocs.backend.Entity.Edit;
 import com.gdocs.backend.Util.HTTPUtil;
 import com.gdocs.backend.Util.JSONParse;
@@ -10,8 +11,10 @@ import com.gdocs.backend.Util.Pako_GzipUtils;
 import com.gdocs.backend.WsResultBean;
 import com.mongodb.DBObject;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
 import org.springframework.util.ResourceUtils;
 
 import javax.websocket.*;
@@ -21,18 +24,21 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.net.URLDecoder;
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static com.gdocs.backend.Util.Constant.APPEND_URL;
-import static com.gdocs.backend.Util.Constant.BASIC_URL;
+import static com.gdocs.backend.Util.Constant.*;
 
 @Slf4j
 @Component
-@ServerEndpoint(value = "/excelSocket/{name}", configurator = GetHttpSessionConfigurator.class)
+@Service
+@ServerEndpoint(value = "/excelSocket/{name}/{file}", configurator = GetHttpSessionConfigurator.class)
 public class OnlineExcelWebSocketServer {
-
+    @Autowired
+    private EditDao editDao;
     /**
      * 静态变量，用来记录当前连接数
      */
@@ -51,6 +57,9 @@ public class OnlineExcelWebSocketServer {
      */
     private String userId;
 
+    private Integer fileId;
+
+    private boolean edited;
     /**
      * 连接成功调用的方法
      * org.springframework.boot.web.servlet.server.Session requestSession,
@@ -58,18 +67,20 @@ public class OnlineExcelWebSocketServer {
      * @param session 可选的参数。与某个客户端的连接会话
      */
     @OnOpen
-    public void onOpen(Session session, @PathParam("name") String name) {
+    public void onOpen(Session session, @PathParam("name") String name,@PathParam("file") Integer file) {
 //        正常情况下，可以用登录的用户名或者token来作为userId
 //        如下可以获取到httpSession，与当前的session(socket)不是一样的
 //        HttpSession httpSession = (HttpSession) config.getUserProperties().get(HttpSession.class.getName());
 //        userId = String.valueOf(httpSession.getAttribute("你的token key"));
         userId = name;
+        fileId = file;
+        edited = false;
         if (tokenMap.get(userId) == null) {
             onlineCount.incrementAndGet();
         }
         tokenMap.put(userId, this);
         this.session = session;
-        log.info("{}建立了连接！", userId);
+        log.info("{}建立了文件{}连接！", userId,fileId);
     }
 
     /**
@@ -78,8 +89,22 @@ public class OnlineExcelWebSocketServer {
     @OnClose
     public void onClose() {
         tokenMap.remove(userId);
-
         onlineCount.decrementAndGet();
+        if (edited)
+        {
+            String s = null;
+            JSONObject jsonObject = new JSONObject();
+            jsonObject.put("username", userId);
+            jsonObject.put("id", fileId);
+            try {
+                s = HTTPUtil.HttpRestClient("http://localhost:8888/editFile", HttpMethod.POST, jsonObject);
+                if (s == "400") {
+                    log.error("插入编辑记录失败");
+                }
+            } catch (IOException e) {
+                log.error("连接编辑记录失败");
+            }
+        }
         log.info("有一连接关闭！当前连接总数为{}", onlineCount.get());
     }
 
@@ -99,21 +124,24 @@ public class OnlineExcelWebSocketServer {
         if (bson != null) {
             if (bson.get("t").equals("v")) {
                 //更改数据并存储
-                //log.info(bson.toString());
+                edited = true;
+                log.info(bson.toString());
                 JSONObject jsonObject = new JSONObject();
-                jsonObject.put("Path","6");
+                jsonObject.put("Path",fileId + ".txt");
                 jsonObject.put("Data",bson.toString()+",");
                 String s = null;
                 try {
                     s = HTTPUtil.HttpRestClient(BASIC_URL + APPEND_URL, HttpMethod.POST,jsonObject);
                 } catch (IOException e) {
-                    log.error("写dfs失败");
+                    log.error("连接dfs失败");
                 }
                 //System.out.print(s);
                 Map<String,Object> reply= (Map<String,Object>)JSONObject.parse(s);
                 if (reply.get("Success").equals(false))
                 {
+                    log.error(reply.toString());
                     log.error("写dfs失败");
+                    return;
                 }
             }
         }
@@ -122,23 +150,26 @@ public class OnlineExcelWebSocketServer {
         for (String key : tokenMap.keySet()) {
             if (!key.equals(userId)) {
                 OnlineExcelWebSocketServer socketServer = (OnlineExcelWebSocketServer) tokenMap.get(key);
-                WsResultBean wsResultBean = null;
-                wsResultBean = new WsResultBean();
-                wsResultBean.setData(contentReal);
-                wsResultBean.setStatus(0);
-                wsResultBean.setUsername(userId);
-                wsResultBean.setId(wsResultBean.getUsername());
-                wsResultBean.setReturnMessage("success");
-                if (bson != null) {
-                    if (bson.get("t").equals("mv")) {
-                        //更新选区显示
-                        wsResultBean.setType(3);
-                    } else {
-                        //更新数据
-                        wsResultBean.setType(2);
+                if (socketServer.fileId.equals(this.fileId))
+                {
+                    WsResultBean wsResultBean = null;
+                    wsResultBean = new WsResultBean();
+                    wsResultBean.setData(contentReal);
+                    wsResultBean.setStatus(0);
+                    wsResultBean.setUsername(userId);
+                    wsResultBean.setId(wsResultBean.getUsername());
+                    wsResultBean.setReturnMessage("success");
+                    if (bson != null) {
+                        if (bson.get("t").equals("mv")) {
+                            //更新选区显示
+                            wsResultBean.setType(3);
+                        } else {
+                            //更新数据
+                            wsResultBean.setType(2);
+                        }
                     }
+                    socketServer.sendMessage(wsResultBean, socketServer.session);
                 }
-                socketServer.sendMessage(wsResultBean, socketServer.session);
             }
         }
     }

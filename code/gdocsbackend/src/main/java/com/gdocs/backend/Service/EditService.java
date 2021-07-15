@@ -3,5 +3,5 @@ package com.gdocs.backend.Service;
 import org.springframework.web.bind.annotation.RequestParam;
 
 public interface EditService {
-    String downExcelData(int id);
+    String downExcelData(Integer id);
 }

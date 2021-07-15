@@ -4,10 +4,11 @@ class Luckysheet extends React.Component {
         super(props);
         console.log(this.props.id)
         console.log(this.props.filename)
+        console.log(localStorage.getItem("username"))
     }
     componentDidMount() {
         const luckysheet = window.luckysheet;
-        var socket_url = "ws://" + window.location.host + "/excelSocket/"+localStorage.username+"/"+this.props.id;
+        var socket_url = "ws://127.0.0.1:8888/excelSocket/"+localStorage.getItem('username')+"/"+this.props.id;
         luckysheet.create({
             container: "luckysheet",
             plugins:['chart'],
@@ -16,8 +17,8 @@ class Luckysheet extends React.Component {
             allowEdit: true,
             allowUpdate:true,
             myFolderUrl: "/menu",
-            userInfo: '<i style="font-size:16px;color:#ff6a00;" class="fa fa-user-circle" aria-hidden="true">[[${userName}]]</i>',
-            loadUrl: "/publicApi/excel/downData?id="+this.props.id,
+            userInfo: '<i style="font-size:16px;color:#ff6a00;" class="fa fa-user-circle" aria-hidden="true">' + localStorage.getItem('username') + '</i>',
+            loadUrl: "http://localhost:8888/publicApi/excel/downData?id="+this.props.id,
             updateUrl: socket_url,
             // hook:{
             //     updated:function(e){

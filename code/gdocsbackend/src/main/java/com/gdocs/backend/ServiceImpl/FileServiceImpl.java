@@ -5,6 +5,7 @@ import com.gdocs.backend.Dao.EditDao;
 import com.gdocs.backend.Dao.GFileDao;
 import com.gdocs.backend.Entity.Edit;
 import com.gdocs.backend.Entity.GFile;
+import com.gdocs.backend.Reply.FileReply;
 import com.gdocs.backend.Service.FileService;
 import com.gdocs.backend.Util.*;
 
@@ -42,8 +43,9 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
-    public Integer addFile(String username,String filename)
+    public FileReply addFile(String username, String filename)
     {
+        FileReply fileReply = new FileReply();
         GFile gFile = new GFile();
         gFile.setFilename(filename);
         gFile.setCreator(username);
@@ -53,11 +55,13 @@ public class FileServiceImpl implements FileService {
         {
             JSONObject jsonObject = new JSONObject();
             jsonObject.put("Path",gFile.getId().toString()+".txt");
+            System.out.print(gFile.getId());
             String s;
             try {
                 s = HTTPUtil.HttpRestClient(BASIC_URL + CREATE_URL, HttpMethod.POST,jsonObject);
             } catch (IOException e) {
-                return 400;
+                fileReply.setStatus(400);
+                return fileReply;
             }
             Map<String,Object> reply= (Map<String,Object>)JSONObject.parse(s);
            if (reply.get("Success").equals(true))
@@ -67,10 +71,13 @@ public class FileServiceImpl implements FileService {
                edit.setEditor(username);
                edit.setEdittime(gFile.getRecent());
                editDao.save(edit);
-               return 200;
+               fileReply.setStatus(200);
+               fileReply.setGfile(gFile);
+               return fileReply;
            }
         }
-        return 400;
+        fileReply.setStatus(400);
+        return fileReply;
     }
 
     @Override
@@ -115,5 +122,19 @@ public class FileServiceImpl implements FileService {
             }
         }
         return 402;//文件不存在
+    }
+
+    @Override
+    public Integer editFileByID(String username,Integer fileId)
+    {
+        Edit edit = new Edit();
+        edit.setEditor(username);
+        edit.setFileid(fileId);
+        edit.setEdittime(Timestamp.valueOf(LocalDateTime.now()));
+        if (editDao.save(edit) == null)
+        {
+            return 400;
+        }
+        return 200;
     }
 }

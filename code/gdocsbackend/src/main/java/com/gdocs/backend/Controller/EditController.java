@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import javax.servlet.http.HttpServletRequest;
 
 @Controller
+@CrossOrigin(origins = "*",maxAge = 3600)
 public class EditController {
     @Autowired
     private EditService editService;
@@ -32,10 +33,12 @@ public class EditController {
     @PostMapping("/publicApi/excel/downData")
     @ResponseBody
     //http://localhost/publicApi/excel/downData?id=1
-    public String downExcelData(@RequestParam(value = "id", defaultValue = "-1") int id) {
+    public String downExcelData(@RequestParam(value = "id", defaultValue = "-1") Integer id) {
         /***
          * 1.从数据库中读取id luckysheet记录
          */
+        //return "[{\"name\":\"filename\" ,\"index\":\"index \",\"status\":1,\"order\":\"0\",\"celldata\":[]}]";
+        System.out.print(id);
         return editService.downExcelData(id);
     }
 

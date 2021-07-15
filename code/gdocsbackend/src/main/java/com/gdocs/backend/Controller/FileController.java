@@ -1,6 +1,7 @@
 package com.gdocs.backend.Controller;
 
 import com.gdocs.backend.Entity.GFile;
+import com.gdocs.backend.Reply.FileReply;
 import com.gdocs.backend.Service.FileService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -28,7 +29,7 @@ public class FileController {
     }
 
     @RequestMapping("/addFile")
-    public Integer addFile(@RequestBody Map<String,String> params)
+    public FileReply addFile(@RequestBody Map<String,String> params)
     {
         String username = params.get("username");
         String filename = params.get("filename");
@@ -41,6 +42,14 @@ public class FileController {
         String username = params.get("username");
         Integer id = Integer.parseInt(params.get("id"));
         return fileService.deleteFileByID(username,id);
+    }
+
+    @RequestMapping("/editFile")
+    public Integer editFile(@RequestBody Map<String,String> params)
+    {
+        String username = params.get("username");
+        Integer id = Integer.parseInt(params.get("id"));
+        return fileService.editFileByID(username,id);
     }
 
     @RequestMapping("/recoverFile")

@@ -4,10 +4,6 @@ import com.mongodb.util.JSONCallback;
 import com.mongodb.util.JSONParseException;
 import org.bson.BSONCallback;
 
-
-/**
- * @author Administrator
- */
 public class JSONParse {
     public static Object parse(final String jsonString) {
         return parse(jsonString, null);
