@@ -65,4 +65,4 @@ class RegisterView extends React.Component{
     }
 }
 
-export default withRouter(RegisterView);
+export default RegisterView;

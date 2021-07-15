@@ -16,4 +16,4 @@ class ExcelView extends React.Component{
     }
 }
 
-export default withRouter(ExcelView);
+export default ExcelView;
