@@ -8,7 +8,7 @@ class MenuView extends React.Component{
         this.state={
             ifBin:false,
             files:[],
-            bin:[],
+            bin:[]
         };
         console.log(localStorage.username)
         this.getFiles();
@@ -45,9 +45,9 @@ class MenuView extends React.Component{
                 'Content-Type':'application/json;charset=UTF-8',
                 'Access-Control-ALLow-Origin':"*"
             },
-            body:{
+            body:JSON.stringify({
                 username:username,
-            },
+            }),
             mode:'cors',
             cache:"default"})
             .then(response => response.json())
