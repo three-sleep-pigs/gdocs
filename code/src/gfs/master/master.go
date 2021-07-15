@@ -3,19 +3,15 @@ package master
 import (
 	"../../gfs"
 	"../cmap"
-	"encoding/gob"
 	"fmt"
 	"net"
 	"net/rpc"
 	"os"
-	"path"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
-// TODO: log, checkpoint, recovery
 // TODO: lazy delete
 
 // Master struct
@@ -23,11 +19,8 @@ type Master struct {
 	address    string // master server address
 	serverRoot string
 	l          net.Listener
-	shutdown   chan struct{}
-	dead       bool // set to ture if server is shutdown
-	metaFileLock sync.Mutex // protect metadata file
 
-	nhLock     sync.Mutex
+
 	nextHandle int64
 
 	// all keys from the following 3 maps are string
@@ -40,13 +33,10 @@ type Master struct {
 	chunkServerInfos cmap.ConcurrentMap
 
 	// list of chunk handles need a new replicas
-	rnlLock          sync.RWMutex
 	replicasNeedList []int64
 }
 
 type FileMetadata struct {
-	sync.RWMutex
-
 	isDir bool
 
 	// if it is a file
@@ -55,8 +45,6 @@ type FileMetadata struct {
 }
 
 type ChunkMetadata struct {
-	sync.RWMutex
-
 	location []string  // set of replica locations
 	primary  string    // primary chunkserver
 	expire   time.Time // lease expire time
@@ -66,37 +54,13 @@ type ChunkMetadata struct {
 }
 
 type ChunkServerInfo struct {
-	sync.RWMutex
-
 	lastHeartbeat time.Time
 	chunks        map[int64]bool // set of chunks that the chunkserver has
 	garbage       []int64
 	valid 		  bool
 }
 
-type PersistentFileMetadata struct {
-	Path string
-
-	IsDir bool
-
-	// if it is a file
-	Size         int64
-	ChunkHandles []int64
-}
-
-type PersistentChunkMetadata struct {
-	ChunkHandle int64
-
-	Version  int64
-	Checksum int64
-	Refcnt   int64
-}
-
-type PersistentMetadata struct {
-	NextHandle int64
-	ChunkMeta  []PersistentChunkMetadata
-	FileMeta   []PersistentFileMetadata
-}
+// TODO: create next handle, handle error
 
 // NewAndServe starts a master and returns the pointer to it.
 func NewAndServe(address string, serverRoot string) *Master {
@@ -104,8 +68,6 @@ func NewAndServe(address string, serverRoot string) *Master {
 		address:    address,
 		serverRoot: serverRoot,
 		nextHandle: 0,
-		shutdown:   make(chan struct{}),
-		dead:       false,
 	}
 	gfs.DebugMsgToFile("new a master", gfs.MASTER, m.address)
 	// initial 3 concurrent maps
@@ -144,11 +106,6 @@ func NewAndServe(address string, serverRoot string) *Master {
 	// handle rpc
 	go func() {
 		for {
-			select {
-			case <-m.shutdown:
-				return
-			default:
-			}
 			conn, err := m.l.Accept()
 			if err == nil {
 				go func() {
@@ -156,9 +113,7 @@ func NewAndServe(address string, serverRoot string) *Master {
 					conn.Close()
 				}()
 			} else {
-				if !m.dead {
-					gfs.DebugMsgToFile(fmt.Sprintf("connect error <%s>", err), gfs.MASTER, m.address)
-				}
+				gfs.DebugMsgToFile(fmt.Sprintf("connect error <%s>", err), gfs.MASTER, m.address)
 			}
 		}
 	}()
@@ -166,29 +121,13 @@ func NewAndServe(address string, serverRoot string) *Master {
 	// handle timed task
 	go func() {
 		serverCheckTicker := time.Tick(gfs.ServerCheckInterval)
-		storeMetaTicker := time.Tick(gfs.StoreMetaInterval)
 		for {
 			select {
-			case <-m.shutdown:
-				return
 			case <-serverCheckTicker:
 				{
-					if m.dead {     // check if shutdown
-						return
-					}
 					err := m.serverCheck()
 					if err != nil {
 						gfs.DebugMsgToFile(fmt.Sprintf("serverCheck error <%s>", err), gfs.MASTER, m.address)
-					}
-				}
-			case <-storeMetaTicker:
-				{
-					if m.dead {     // check if shutdown
-						return
-					}
-					err := m.storeMeta()
-					if err != nil {
-						gfs.DebugMsgToFile(fmt.Sprintf("storeMeta error <%s>", err), gfs.MASTER, m.address)
 					}
 				}
 			}
@@ -196,129 +135,6 @@ func NewAndServe(address string, serverRoot string) *Master {
 	}()
 	gfs.DebugMsgToFile("master start to serve", gfs.MASTER, m.address)
 	return m
-}
-
-// loadMeta loads metadata from disk
-func (m *Master) loadMeta() error {
-	gfs.DebugMsgToFile("load meta start", gfs.MASTER, m.address)
-	defer gfs.DebugMsgToFile("load meta end", gfs.MASTER, m.address)
-	filename := path.Join(m.serverRoot, gfs.MetaFileName)
-	file, err := os.OpenFile(filename, os.O_RDONLY, 0777)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	var meta PersistentMetadata
-	dec := gob.NewDecoder(file)
-	err = dec.Decode(&meta)
-	if err != nil {
-		gfs.DebugMsgToFile(fmt.Sprintf("load meta error <%s>", err), gfs.MASTER, m.address)
-		return err
-	}
-
-	m.nextHandle = meta.NextHandle
-
-	for _, pf := range meta.FileMeta {
-		f := new(FileMetadata)
-		f.isDir = pf.IsDir
-		f.size = pf.Size
-		f.chunkHandles = pf.ChunkHandles
-		e := m.fileNamespace.SetIfAbsent(pf.Path, f)
-		if !e {
-			gfs.DebugMsgToFile("set file metadata exist", gfs.MASTER, m.address)
-		}
-	}
-
-	for _, pc := range meta.ChunkMeta {
-		c := new(ChunkMetadata)
-		c.version = pc.Version
-		c.checksum = pc.Checksum
-		c.refcnt = pc.Refcnt
-		e := m.chunkNamespace.SetIfAbsent(fmt.Sprintf("%d", pc.ChunkHandle), c)
-		if !e {
-			gfs.DebugMsgToFile("set chunk metadata exist", gfs.MASTER, m.address)
-		}
-	}
-
-	return nil
-}
-
-// storeMeta stores metadata to disk
-func (m *Master) storeMeta() error {
-	gfs.DebugMsgToFile("store meta start", gfs.MASTER, m.address)
-	defer gfs.DebugMsgToFile("store meta end", gfs.MASTER, m.address)
-	m.metaFileLock.Lock() // prevent storeMeta from being called concurrently
-	defer m.metaFileLock.Unlock()
-
-	filename := path.Join(m.serverRoot, gfs.MetaFileName)
-	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
-	if err != nil {
-		gfs.DebugMsgToFile(fmt.Sprintf("store meta error <%s>", err), gfs.MASTER, m.address)
-		return err
-	}
-	defer file.Close()
-
-	var meta PersistentMetadata
-
-	for tuple := range m.fileNamespace.IterBuffered() {
-		f := tuple.Val.(*FileMetadata)
-		f.RLock()
-		meta.FileMeta = append(meta.FileMeta, PersistentFileMetadata{
-			Path:         tuple.Key,
-			IsDir:        f.isDir,
-			Size:         f.size,
-			ChunkHandles: f.chunkHandles,
-		})
-		f.RUnlock()
-	}
-
-	for tuple := range m.chunkNamespace.IterBuffered() {
-		h, err := strconv.ParseInt(tuple.Key, 10, 64)
-		if err != nil {
-			gfs.DebugMsgToFile(fmt.Sprintf("parse chunk handle error <%s>", err), gfs.MASTER, m.address)
-			continue
-		}
-		c := tuple.Val.(*ChunkMetadata)
-		c.RLock()
-		meta.ChunkMeta = append(meta.ChunkMeta, PersistentChunkMetadata{
-			ChunkHandle: h,
-			Version:     c.version,
-			Checksum:    c.checksum,
-			Refcnt:      c.refcnt,
-		})
-		c.RUnlock()
-	}
-
-	m.nhLock.Lock()
-	meta.NextHandle = m.nextHandle
-	m.nhLock.Unlock()
-
-	enc := gob.NewEncoder(file)
-	err = enc.Encode(meta)
-	return err
-}
-
-// Shutdown shuts down master
-// FIXME: Shutdown shouldn't be called concurrently because TOCTTOU of m.dead
-// no need to fix it
-func (m *Master) Shutdown() {
-	gfs.DebugMsgToFile("shut down start", gfs.MASTER, m.address)
-	defer gfs.DebugMsgToFile("shut down end", gfs.MASTER, m.address)
-	if !m.dead {
-		m.dead = true
-		// close will cause case <- shutdown part get value 0
-		// end the rpc goroutine and the server check, store goroutine
-		close(m.shutdown)
-		err := m.l.Close()
-		if err != nil {
-			gfs.DebugMsgToFile(fmt.Sprintf("close listener error <%s>", err), gfs.MASTER, m.address)
-		}
-		err = m.storeMeta()
-		if err != nil {
-			gfs.DebugMsgToFile(fmt.Sprintf("store metadata error <%s>", err), gfs.MASTER, m.address)
-		}
-	}
 }
 
 // serverCheck checks chunkServer
