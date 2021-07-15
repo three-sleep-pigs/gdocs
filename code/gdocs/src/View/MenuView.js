@@ -35,8 +35,8 @@ class MenuView extends React.Component{
     }
     deleteFile=(id)=>{
         console.log("click",id)
-        let username=localStorage.username
         let that=this
+        let username=localStorage.username
         fetch("http://localhost:8888/deleteFile",{
             method:'POST',
             headers:{
