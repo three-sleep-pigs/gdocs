@@ -1,20 +1,23 @@
 import React from "react";
 import '../bootstrap-4.6.0-dist/bootstrap-4.6.0-dist/css/bootstrap.min.css'
 import '../CSS/MenuView.css'
-import {withRouter} from "react-router-dom";
 import {Link} from "react-router-dom";
 class MenuView extends React.Component{
     constructor(props) {
         super(props);
         this.state={
+            ifBin:false,
             files:[],
+            bin:[],
         };
+        console.log(localStorage.username)
         this.getFiles();
-        this.deleteFile=this.deleteFile.bind(this)
-        this.createFile=this.createFile.bind(this)
+        this.getBin();
+        this.deleteFile=this.deleteFile.bind(this);
+        this.createFile=this.createFile.bind(this);
     }
     getFiles(){
-        let that=this
+        let that=this;
         fetch("http://localhost:8888/getFiles",{
             method:'GET',
             headers:{
@@ -33,10 +36,34 @@ class MenuView extends React.Component{
             console.log('parsing failed', ex)
         })
     }
+    getBin(){
+        let that=this;
+        let username=localStorage.username;
+        fetch("http://localhost:8888/getBin",{
+            method:'POST',
+            headers:{
+                'Content-Type':'application/json;charset=UTF-8',
+                'Access-Control-ALLow-Origin':"*"
+            },
+            body:{
+                username:username,
+            },
+            mode:'cors',
+            cache:"default"})
+            .then(response => response.json())
+            .then(data => {
+                console.log(data);
+                that.setState({
+                    bin: data,
+                });
+            }).catch(function (ex) {
+            console.log('parsing failed', ex)
+        })
+    }
     deleteFile=(id)=>{
-        console.log("click",id)
-        let that=this
-        let username=localStorage.username
+        console.log("click",id);
+        let that=this;
+        let username=localStorage.username;
         fetch("http://localhost:8888/deleteFile",{
             method:'POST',
             headers:{
@@ -54,7 +81,8 @@ class MenuView extends React.Component{
                 if(data===200){
                     that.setState(
                         {
-                            files:that.state.files.filter(item=>item.id!==id)
+                            files:that.state.files.filter(item=>item.id!==id),
+                            bin:that.state.bin.push(item=>item.id===id)
                         }
                     )
                 }
@@ -69,12 +97,47 @@ class MenuView extends React.Component{
                 }
             }).catch(function (ex) {
             console.log('parsing failed', ex)
+        });
+    }
+
+    recoverFile=(id)=>{
+        console.log("click",id);
+        let that=this;
+        let username=localStorage.username;
+        fetch("http://localhost:8888/recoverFile",{
+            method:'POST',
+            headers:{
+                'Content-Type':'application/json;charset=UTF-8',
+                'Access-Control-ALLow-Origin':"*"
+            },
+            body:JSON.stringify({
+                username:username,
+                id:id,
+            }),
+            mode:'cors',
+            cache:"default"})
+            .then(response => response.json())
+            .then(data => {
+                if(data===200){
+                    that.setState(
+                        {
+                            bin:that.state.bin.filter(item=>item.id!==id),
+                            files:that.state.files.push(item=>item.id===id)
+                        }
+                    )
+                }
+                else if(data===400){
+                    alert("恢复文件失败");
+                }
+            }).catch(function (ex) {
+            console.log('parsing failed', ex)
         })
     }
+
     createFile=()=>{
-        let that=this
-        let filename=document.getElementById('inputFilename').value
-        let username=localStorage.username
+        let that=this;
+        let filename=document.getElementById('inputFilename').value;
+        let username=localStorage.username;
         fetch("http://localhost:8888/addFile",{
             method:'POST',
             headers:{
@@ -102,15 +165,27 @@ class MenuView extends React.Component{
                 }
             }).catch(function (ex) {
             console.log('parsing failed', ex)
-        })
+        });
+    }
+
+    gotoFile=()=>{
+        this.setState({
+            ifBin:false,
+        });
+    };
+
+    gotoBin=()=>{
+        this.setState({
+            ifBin:true,
+        });
     }
     render() {
         return(
             <div className="menu-page">
                 <div className="nav-scroller bg-white shadow-sm">
                     <nav className="nav nav-underline">
-                        <a className="nav-link active" href="/list">文档列表</a>
-                        <a className="nav-link" href="/garbage">回收站</a>
+                        <a className="nav-link active" onClick={()=>this.gotoFile()}>文档列表</a>
+                        <a className="nav-link" onClick={()=>this.gotoBin()}>回收站</a>
                         <form className="form-inline my-2 my-lg-0 ">
                             <input type="text" id="inputFilename" className="form-control" placeholder="new filename" />
                             <button className="btn btn-outline-success my-2 my-sm-0" onClick={()=>this.createFile()}>新建文档</button>
@@ -129,24 +204,39 @@ class MenuView extends React.Component{
                     <div className="my-3 p-3 bg-white rounded shadow-sm">
                         <div className="media text-muted pt-3">
                             <div className="row mb-4 media-body pb-3 mb-0 small lh-125 border-bottom border-gray">
-                                <h6 className="col-md-5 themed-grid-col ">文件名</h6>
+                                <h6 className="col-md-4 themed-grid-col ">文件名</h6>
                                 <h6 className="col-md-3 themed-grid-col">来自</h6>
-                                <h6 className="col-md-4 themed-grid-col">操作</h6>
+                                <h6 className="col-md-2 themed-grid-col">最近修改</h6>
+                                <h6 className="col-md-3 themed-grid-col">操作</h6>
                             </div>
                         </div>
                         {
-                            this.state.files.map(item=>(
+                            this.state.ifBin? (this.state.bin.map(item=>(
                                 <div className="media text-muted pt-3" key={item.id}>
                                     <div className="row mb-4 media-body pb-3 mb-0 small lh-125 border-bottom border-gray">
-                                        <Link to={{pathname:"/excel",state:{id:item.id,filename:item.filename}}} className="col-md-5 themed-grid-col">{item.filename}</Link>
+                                        <Link to={{pathname:"/excel",state:{id:item.id,filename:item.filename}}} className="col-md-4 themed-grid-col">{item.filename}</Link>
                                         <div className="col-md-3 themed-grid-col">{item.creator}</div>
-                                        <div className="col-md-4 themed-grid-col">
-                                            <button type="button" className="btn btn-danger btn-sm" onClick={()=>this.deleteFile(item.id)}>删除</button>
+                                        <div className="col-md-2 themed-grid-col">{item.recent}</div>
+                                        <div className="col-md-3 themed-grid-col">
+                                            <button type="button" className="btn btn-danger btn-sm" onClick={()=>this.recoverFile(item.id)}>恢复</button>
                                         </div>
                                     </div>
                                 </div>
                                 )
-                            )
+                            )):
+                                (this.state.files.map(item=>(
+                            <div className="media text-muted pt-3" key={item.id}>
+                                <div className="row mb-4 media-body pb-3 mb-0 small lh-125 border-bottom border-gray">
+                                    <Link to={{pathname:"/excel",state:{id:item.id,filename:item.filename}}} className="col-md-4 themed-grid-col">{item.filename}</Link>
+                                    <div className="col-md-3 themed-grid-col">{item.creator}</div>
+                                    <div className="col-md-2 themed-grid-col">{item.recent}</div>
+                                    <div className="col-md-3 themed-grid-col">
+                                        <button type="button" className="btn btn-danger btn-sm" onClick={()=>this.deleteFile(item.id)}>删除</button>
+                                    </div>
+                                </div>
+                            </div>
+                                )
+                            ))
                         }
                     </div>
 
