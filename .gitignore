@@ -6,5 +6,5 @@
 .idea/
 target/
 .DS_Store
-gdocs/node_modules
-gdocs/.idea
+code/gdocsbackend/.mvn/
+code/gdocsbackend/.gitignore
