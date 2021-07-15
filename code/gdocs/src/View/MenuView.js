@@ -9,6 +9,7 @@ class MenuView extends React.Component{
             ifBin:false,
             files:[],
             bin:[],
+            pageName:"文档列表"
         };
         console.log(localStorage.username)
         this.getFiles();
@@ -163,12 +164,14 @@ class MenuView extends React.Component{
     gotoFile=()=>{
         this.setState({
             ifBin:false,
+            pageName:"文档列表"
         });
     };
 
     gotoBin=()=>{
         this.setState({
             ifBin:true,
+            pageName:"回收站"
         });
     }
     render() {
@@ -188,7 +191,7 @@ class MenuView extends React.Component{
                 <main role="main" className="container">
                     <div className="d-flex align-items-center p-3 my-3 text-white-50 bg-purple rounded shadow-sm">
                         <div className="lh-100">
-                            <h6 className="mb-0 text-white lh-100">文档列表</h6>
+                            <h6 className="mb-0 text-white lh-100">{this.state.pageName}</h6>
                             <small>excel</small>
                         </div>
                     </div>
