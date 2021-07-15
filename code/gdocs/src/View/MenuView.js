@@ -156,4 +156,4 @@ class MenuView extends React.Component{
     }
 }
 
-export default withRouter(MenuView);
+export default MenuView;

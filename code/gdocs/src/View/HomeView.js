@@ -19,4 +19,4 @@ class HomeView extends React.Component{
     }
 }
 
-export default withRouter(HomeView);
+export default HomeView;
