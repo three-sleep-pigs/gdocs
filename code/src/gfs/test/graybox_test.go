@@ -783,3 +783,65 @@ func TestPersistent(t *testing.T) {
 	println("GFS SHUTDOWN")
 	gfsShutDown()
 }
+
+/*
+ *  TEST SUITE - Performance Test
+ */
+func BenchmarkCreate(b *testing.B) {
+	println("GFS FILES CLEAN")
+	gfsClean()
+	if c == nil {
+		c = RunClient()
+	}
+	gfsRun()
+	println("GFS START")
+	time.Sleep(time.Duration(5) * time.Second)
+	b.ResetTimer()
+	var wg sync.WaitGroup
+	n := b.N
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func (i int) {
+			err := c.Create(fmt.Sprintf("test%d.txt", i))
+			if err != nil {
+				println(fmt.Sprintf("Create file <test%d.txt> failed <%s>", i, err))
+			}
+			wg.Done()
+		}(i)
+	}
+	wg.Wait()
+	println("GFS SHUTDOWN")
+	gfsShutDown()
+}
+
+func BenchmarkCreateThenDelete(b *testing.B) {
+	c = RunClient()
+	if c == nil {
+		b.Fatalf("start a client fail")
+	}
+	gfsRun()
+	println("GFS START")
+	time.Sleep(time.Duration(5) * time.Second)
+	var wg sync.WaitGroup
+	n := b.N
+	wg.Add(b.N)
+	for i := 0; i < n; i++ {
+		go func (i int) {
+			c.Create(fmt.Sprintf("test%d.txt", i))
+			wg.Done()
+		}(i)
+	}
+	wg.Wait()
+	wg.Add(b.N)
+	for i := 0; i < n; i++ {
+		go func (i int) {
+			c.Delete(fmt.Sprintf("test%d.txt", i))
+			wg.Done()
+		}(i)
+	}
+	wg.Wait()
+	println("GFS SHUTDOWN")
+	gfsShutDown()
+	println("GFS FILES CLEAN")
+	gfsClean()
+}

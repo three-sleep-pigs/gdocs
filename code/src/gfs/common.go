@@ -27,7 +27,7 @@ const (
 )
 
 const (
-	DEBUG = true
+	DEBUG = false
 	ClientDirectory	= "../debug/"
 	ClientDebugFilePrefix = "DEBUG_client_"
 	ClientMSGPrefix = "[CLIENT] "
