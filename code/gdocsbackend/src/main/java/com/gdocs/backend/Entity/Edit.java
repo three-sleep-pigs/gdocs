@@ -24,5 +24,12 @@ public class Edit {
     private Integer length;
 
     @Basic
+    private Integer version;
+
+    /** 0:create,1:modify data,2:delete,3:recover,4:rollback **/
+    @Basic
+    private Integer operation;
+
+    @Basic
     private Timestamp edittime;
 }

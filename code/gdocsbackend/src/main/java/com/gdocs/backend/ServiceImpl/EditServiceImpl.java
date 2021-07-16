@@ -24,7 +24,7 @@ public class EditServiceImpl implements EditService {
     private GFileDao gFileDao;
 
     @Override
-    public String downExcelData(Integer id)
+    public String downExcelData(Integer id,Integer version)
     {
         Optional<GFile> optionalGFile = gFileDao.getGFileById(id);
         if (optionalGFile.isPresent())
@@ -33,7 +33,7 @@ public class EditServiceImpl implements EditService {
             String name = gFile.getFilename();
             Integer length = gFile.getLength();
             JSONObject jsonObject = new JSONObject();
-            jsonObject.put("Path",id.toString()+".txt");
+            jsonObject.put("Path",id + "_" + version +".txt");
             jsonObject.put("Offset",0);
             jsonObject.put("Length",length);
             String s;

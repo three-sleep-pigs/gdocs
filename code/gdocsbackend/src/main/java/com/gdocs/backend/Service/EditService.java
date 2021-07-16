@@ -6,6 +6,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import java.util.List;
 
 public interface EditService {
-    String downExcelData(Integer id);
+    String downExcelData(Integer id,Integer version);
 
 }

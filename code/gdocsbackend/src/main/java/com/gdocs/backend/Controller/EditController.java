@@ -33,12 +33,12 @@ public class EditController {
     @PostMapping("/publicApi/excel/downData")
     @ResponseBody
     //http://localhost/publicApi/excel/downData?id=1
-    public String downExcelData(@RequestParam(value = "id", defaultValue = "-1") Integer id) {
+    public String downExcelData(@RequestParam(value = "id", defaultValue = "-1") Integer id,@RequestParam(value = "version", defaultValue = "-1") Integer version) {
         /***
          * 1.从数据库中读取id luckysheet记录
          */
         System.out.print(id + "\r");
-        return editService.downExcelData(id);
+        return editService.downExcelData(id,version);
     }
 
 

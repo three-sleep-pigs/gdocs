@@ -18,8 +18,7 @@ import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.*;
 
-import static com.gdocs.backend.Util.Constant.BASIC_URL;
-import static com.gdocs.backend.Util.Constant.CREATE_URL;
+import static com.gdocs.backend.Util.Constant.*;
 
 @Service
 public class FileServiceImpl implements FileService {
@@ -50,12 +49,13 @@ public class FileServiceImpl implements FileService {
         gFile.setFilename(filename);
         gFile.setCreator(username);
         gFile.setLength(0);
+        gFile.setVersion(0);
         gFile.setDeleted(false);
         gFile.setRecent(Timestamp.valueOf(LocalDateTime.now()));
         if (gFileDao.saveFile(gFile) != null)
         {
             JSONObject jsonObject = new JSONObject();
-            jsonObject.put("Path",gFile.getId().toString()+".txt");
+            jsonObject.put("Path",gFile.getId()+ "_0.txt");
             System.out.print(gFile.getId());
             String s;
             try {
@@ -73,6 +73,8 @@ public class FileServiceImpl implements FileService {
                edit.setEditor(username);
                edit.setEdittime(gFile.getRecent());
                edit.setLength(0);
+               edit.setVersion(0);
+               edit.setOperation(0);
                editDao.save(edit);
                fileReply.setStatus(200);
                fileReply.setGfile(gFile);
@@ -94,6 +96,14 @@ public class FileServiceImpl implements FileService {
             {
                 if (gFileDao.deleteGFileById(id) == 1)
                 {
+                    Edit edit = new Edit();
+                    edit.setFileid(id);
+                    edit.setEditor(username);
+                    edit.setEdittime(Timestamp.valueOf(LocalDateTime.now()));
+                    edit.setOperation(2);
+                    edit.setVersion(gFile.getVersion());
+                    edit.setLength(gFile.getLength());
+                    editDao.save(edit);
                     return 200;//删除成功
                 } else {
                     return 401;//删除失败
@@ -116,6 +126,14 @@ public class FileServiceImpl implements FileService {
             {
                 if (gFileDao.recoverGFileById(id) == 1)
                 {
+                    Edit edit = new Edit();
+                    edit.setFileid(id);
+                    edit.setEditor(username);
+                    edit.setEdittime(Timestamp.valueOf(LocalDateTime.now()));
+                    edit.setOperation(3);
+                    edit.setVersion(gFile.getVersion());
+                    edit.setLength(gFile.getLength());
+                    editDao.save(edit);
                     return 200;//恢复成功
                 } else {
                     return 401;//恢复失败
@@ -138,6 +156,8 @@ public class FileServiceImpl implements FileService {
             edit.setEditor(username);
             edit.setFileid(fileId);
             edit.setLength(gFile.getLength());
+            edit.setOperation(1);
+            edit.setVersion(gFile.getVersion());
             edit.setEdittime(Timestamp.valueOf(LocalDateTime.now()));
             gFileDao.setRecentById(edit.getEdittime(),fileId);
         }
@@ -170,10 +190,76 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
-    public Integer rollback(Integer fileId,Integer editId)
+    public Integer rollback(Integer fileId,Integer editId,String username)
     {
-        if (gFileDao.setLengthById(editDao.getById(editId).getLength(),fileId) == 1)
+        Edit previous = editDao.getById(editId);
+        Integer previousLength = previous.getLength();
+        Optional<GFile> optionalGFile = gFileDao.getGFileById(fileId);
+        if (optionalGFile.isPresent())
+        {
+            GFile gFile = optionalGFile.get();
+            Integer newVersion = gFile.getVersion() + 1;
+            Edit edit = new Edit();
+            edit.setFileid(fileId);
+            edit.setEditor(username);
+            edit.setEdittime(Timestamp.valueOf(LocalDateTime.now()));
+            edit.setOperation(2);
+            edit.setVersion(newVersion);
+            edit.setLength(previousLength);
+            editDao.save(edit);
+            gFileDao.setRecentById(edit.getEdittime(),fileId);
+            gFileDao.setVersionById(newVersion,fileId);
+            gFileDao.setLengthById(previousLength,fileId);
+
+            //从旧版本读取数据
+            JSONObject readObject = new JSONObject();
+            readObject.put("Path",fileId + "_" + previous.getVersion() + ".txt");
+            readObject.put("Offset",0);
+            readObject.put("Length",previousLength);
+            String readReply;
+            try {
+                readReply = HTTPUtil.HttpRestClient(BASIC_URL+ READ_URL, HttpMethod.POST,readObject);
+            } catch (IOException e) {
+                return 402;//读取DFS错误
+            }
+            Map<String,Object> rReplyMap= (Map<String,Object>)JSONObject.parse(readReply);
+            if (rReplyMap.get("Success").equals(false))
+            {
+                return 402;
+            }
+
+            //创建新文件
+            JSONObject createObject = new JSONObject();
+            createObject.put("Path",fileId + "_" + newVersion + ".txt");
+            String createReply;
+            try {
+                createReply = HTTPUtil.HttpRestClient(BASIC_URL + CREATE_URL, HttpMethod.POST,createObject);
+            } catch (IOException e) {
+                return 403;//创建新文件错误
+            }
+            Map<String,Object> cReplyMap= (Map<String,Object>)JSONObject.parse(createReply);
+            if (cReplyMap.get("Success").equals(false))
+            {
+                return 403;
+            }
+
+            //写入新文件
+            JSONObject writeObject = new JSONObject();
+            writeObject.put("Path",fileId + "_" + newVersion + ".txt");
+            writeObject.put("Data",readReply);
+            String writeReply;
+            try {
+                writeReply = HTTPUtil.HttpRestClient(BASIC_URL+ APPEND_URL, HttpMethod.POST,writeObject);
+            } catch (IOException e) {
+                return 404;//写入DFS错误
+            }
+            Map<String,Object> wReplyMap= (Map<String,Object>)JSONObject.parse(writeReply);
+            if (wReplyMap.get("Success").equals(false))
+            {
+                return 404;
+            }
             return 200;
-        return 400;
+        }
+        return 401;//文件不存在
     }
 }

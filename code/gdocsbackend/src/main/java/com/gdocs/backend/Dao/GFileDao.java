@@ -15,4 +15,5 @@ public interface GFileDao {
     int recoverGFileById(Integer id);
     int setRecentById(Timestamp recent, Integer id);
     int setLengthById(Integer length,Integer id);
+    int setVersionById(Integer version,Integer id);
 }

@@ -74,15 +74,17 @@ public class FileController {
     public List<Edit> getEditsByFileId(@RequestBody Map<String,Integer> params)
     {
         Integer fileId = params.get("id");
+        System.out.print("getEditRecord,params:" + params);
         return fileService.getEditsByFileId(fileId);
     }
 
     @RequestMapping("/rollback")
-    public Integer rollback(@RequestBody Map<String,Integer> params)
+    public Integer rollback(@RequestBody Map<String,String> params)
     {
-        Integer fileId = params.get("file");
-        Integer editId = params.get("edit");
-        System.out.print(fileId + "," + editId);
-        return fileService.rollback(fileId,editId);
+        Integer fileId = Integer.parseInt(params.get("file"));
+        Integer editId = Integer.parseInt(params.get("edit"));
+        String username = params.get("username");
+        System.out.print("rollback,params:" + params);
+        return fileService.rollback(fileId,editId,username);
     }
 }

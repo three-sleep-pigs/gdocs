@@ -26,5 +26,8 @@ public class GFile {
     private boolean deleted;
 
     @Basic
+    private Integer version;
+
+    @Basic
     private Timestamp recent;
 }

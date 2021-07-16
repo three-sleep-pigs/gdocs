@@ -15,5 +15,5 @@ public interface FileService {
     Integer editFileByID(String username,Integer fileId);
     Integer updateFileByID(Integer fileId,Integer append);
     List<Edit> getEditsByFileId(Integer fileId);
-    Integer rollback(Integer fileId,Integer editId);
+    Integer rollback(Integer fileId,Integer editId,String username);
 }
