@@ -40,3 +40,17 @@ func CallAll(dst []string, rpcname string, args interface{}) error {
 		return fmt.Errorf(errList)
 	}
 }
+
+// CallMaster applies the rpc call to a master.
+func CallMaster(rpcname string, args interface{}, reply interface{}) error {
+	for _, addr := range Masters {
+		c, errx := rpc.Dial("tcp", addr)
+		if errx != nil {
+			continue
+		}
+		err := c.Call(rpcname, args, reply)
+		c.Close()
+		return err
+	}
+	return fmt.Errorf("no master alive")
+}

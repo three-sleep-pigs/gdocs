@@ -89,6 +89,7 @@ const (
 
 	// chunk server
 	HeartbeatInterval   = 100 * time.Millisecond
+	StoreMetaInterval   = 1 * time.Hour
 	GarbageCollectionInterval = 2 * time.Hour
 	MutationMaxTime 	= 1 * time.Second
 
@@ -104,3 +105,6 @@ const (
 	AppendExceedChunkSize
 	ReadEOF
 )
+
+// Masters the addr of masters
+var Masters = []string{"127.0.0.1:8080","127.0.0.1:8081","127.0.0.1:8082"}

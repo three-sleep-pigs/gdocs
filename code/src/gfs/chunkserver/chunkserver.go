@@ -21,7 +21,6 @@ type ChunkServer struct {
 	lock     sync.RWMutex // protect chunk server info
 	metaFileLock sync.Mutex // protect chunk metadata file
 	id       string // chunk server id
-	master   string // master address
 	rootDir  string // path to data storage
 	l        net.Listener
 	shutdown chan struct{}
@@ -56,11 +55,10 @@ type Metadata struct {
 }
 
 // NewChunkServer create a new chunk server and return a pointer to it
-func NewChunkServer(id string, master string, rootDir string) *ChunkServer {
+func NewChunkServer(id string, rootDir string) *ChunkServer {
 	cs := &ChunkServer{
 		id:       id,
 		shutdown: make(chan struct{}),
-		master:   master,
 		rootDir:  rootDir,
 		chunks:    cmap.New(),
 		leaseSet: cmap.New(),
@@ -291,7 +289,7 @@ func (cs *ChunkServer) heartbeat() error {
 		ToExtendLeases: le,
 	}
 	var reply gfs.HeartbeatReply
-	err := gfs.Call(cs.master, "Master.RPCHeartbeat", args, &reply)
+	err := gfs.CallMaster("Master.RPCHeartbeat", args, &reply)
 	if err != nil {
 		gfs.DebugMsgToFile(fmt.Sprintf("chunk server heartbeat error <%s>", err), gfs.CHUNKSERVER, cs.id)
 		return err

@@ -14,16 +14,14 @@ import (
 
 // Client struct is the GFS client-side driver
 type Client struct {
-	master   string
 	replicaBuffer *ReplicaBuffer
 	identifier	string
 }
 
 // NewClient starts a new gfs client.
-func NewClient(master string, addr string) *Client {
+func NewClient(addr string) *Client {
 	c := &Client{
-		master:   master,
-		replicaBuffer: newReplicaBuffer(master, gfs.ReplicaBufferTick),
+		replicaBuffer: newReplicaBuffer(gfs.ReplicaBufferTick),
 		identifier: addr,
 	}
 
@@ -274,7 +272,7 @@ func (c *Client) Create(path string) error {
 	gfs.DebugMsgToFile(fmt.Sprintf("create file <%s>", path), gfs.CLIENT, c.identifier)
 	defer gfs.DebugMsgToFile(fmt.Sprintf("create file <%s> end", path), gfs.CLIENT, c.identifier)
 	var reply gfs.CreateFileReply
-	err := gfs.Call(c.master, "Master.RPCCreateFile", gfs.CreateFileArg{Path: path}, &reply)
+	err := gfs.CallMaster("Master.RPCCreateFile", gfs.CreateFileArg{Path: path}, &reply)
 	if err != nil {
 		gfs.DebugMsgToFile(fmt.Sprintf("create file <%s> error <%s>", path, err), gfs.CLIENT, c.identifier)
 		return err
@@ -287,7 +285,7 @@ func (c *Client) Delete(path string) error {
 	gfs.DebugMsgToFile(fmt.Sprintf("delete file <%s>", path), gfs.CLIENT, c.identifier)
 	defer gfs.DebugMsgToFile(fmt.Sprintf("delete file <%s> end", path), gfs.CLIENT, c.identifier)
 	var reply gfs.DeleteFileReply
-	err := gfs.Call(c.master, "Master.RPCDeleteFile", gfs.DeleteFileArg{Path: path}, &reply)
+	err := gfs.CallMaster("Master.RPCDeleteFile", gfs.DeleteFileArg{Path: path}, &reply)
 	if err != nil {
 		gfs.DebugMsgToFile(fmt.Sprintf("delete file <%s> error <%s>", path, err), gfs.CLIENT, c.identifier)
 		return err
@@ -300,7 +298,7 @@ func (c *Client) Rename(source string, target string) error {
 	gfs.DebugMsgToFile(fmt.Sprintf("rename file <%s> to file <%s>", source, target), gfs.CLIENT, c.identifier)
 	defer gfs.DebugMsgToFile(fmt.Sprintf("rename file <%s> to file <%s> end", source, target), gfs.CLIENT, c.identifier)
 	var reply gfs.RenameFileReply
-	err := gfs.Call(c.master, "Master.RPCRenameFile", gfs.RenameFileArg{Source: source, Target: target}, &reply)
+	err := gfs.CallMaster("Master.RPCRenameFile", gfs.RenameFileArg{Source: source, Target: target}, &reply)
 	if err != nil {
 		gfs.DebugMsgToFile(fmt.Sprintf("rename file <%s> to file <%s> error <%s>", source, target, err), gfs.CLIENT, c.identifier)
 		return err
@@ -313,7 +311,7 @@ func (c *Client) Mkdir(path string) error {
 	gfs.DebugMsgToFile(fmt.Sprintf("create directory <%s>", path), gfs.CLIENT, c.identifier)
 	defer gfs.DebugMsgToFile(fmt.Sprintf("create directory <%s> end", path), gfs.CLIENT, c.identifier)
 	var reply gfs.MkdirReply
-	err := gfs.Call(c.master, "Master.RPCMkdir", gfs.MkdirArg{Path: path}, &reply)
+	err := gfs.CallMaster("Master.RPCMkdir", gfs.MkdirArg{Path: path}, &reply)
 	if err != nil {
 		gfs.DebugMsgToFile(fmt.Sprintf("create directory <%s> error <%s>", path, err), gfs.CLIENT, c.identifier)
 		return err
@@ -327,7 +325,7 @@ func (c *Client) getChunkHandle(path string, index int64) (int64, error) {
 	gfs.DebugMsgToFile(fmt.Sprintf("get path <%s> index <%d> chunk handle", path, index), gfs.CLIENT, c.identifier)
 	defer gfs.DebugMsgToFile(fmt.Sprintf("get path <%s> index <%d> chunk handle end", path, index), gfs.CLIENT, c.identifier)
 	var reply gfs.GetChunkHandleReply
-	err := gfs.Call(c.master, "Master.RPCGetChunkHandle", gfs.GetChunkHandleArg{Path: path, Index: index}, &reply)
+	err := gfs.CallMaster("Master.RPCGetChunkHandle", gfs.GetChunkHandleArg{Path: path, Index: index}, &reply)
 	if err != nil {
 		gfs.DebugMsgToFile(fmt.Sprintf("get path <%s> index <%d> chunk handle error <%s>", path, index, err), gfs.CLIENT, c.identifier)
 		return 0, err
@@ -381,7 +379,7 @@ func (c *Client) Read(path string, offset int64, data []byte) (n int64, err erro
 	gfs.DebugMsgToFile(fmt.Sprintf("read file path <%s> offset <%d>", path, offset), gfs.CLIENT, c.identifier)
 	defer gfs.DebugMsgToFile(fmt.Sprintf("read file path <%s> offset <%d> end", path, offset), gfs.CLIENT, c.identifier)
 	var f gfs.GetFileInfoReply
-	err = gfs.Call(c.master, "Master.RPCGetFileInfo", gfs.GetFileInfoArg{Path: path}, &f)
+	err = gfs.CallMaster("Master.RPCGetFileInfo", gfs.GetFileInfoArg{Path: path}, &f)
 	if err != nil {
 		return -1, err
 	}
@@ -438,7 +436,7 @@ func (c *Client) Write(path string, offset int64, data []byte) (size int, error 
 	gfs.DebugMsgToFile(fmt.Sprintf("write file path <%s> offset <%d>", path, offset), gfs.CLIENT, c.identifier)
 	defer gfs.DebugMsgToFile(fmt.Sprintf("write file path <%s> offset <%d> end", path, offset), gfs.CLIENT, c.identifier)
 	var f gfs.GetFileInfoReply
-	err := gfs.Call(c.master, "Master.RPCGetFileInfo", gfs.GetFileInfoArg{Path: path}, &f)
+	err := gfs.CallMaster("Master.RPCGetFileInfo", gfs.GetFileInfoArg{Path: path}, &f)
 	if err != nil {
 		gfs.DebugMsgToFile(fmt.Sprintf("write file path <%s> offset <%d> error <%s>", path, offset, err), gfs.CLIENT, c.identifier)
 		return 0, err
@@ -531,7 +529,7 @@ func (c *Client) Append(path string, data []byte) (offset int64, err error) {
 	}
 
 	var f gfs.GetFileInfoReply
-	err = gfs.Call(c.master, "Master.RPCGetFileInfo", gfs.GetFileInfoArg{Path: path}, &f)
+	err = gfs.CallMaster("Master.RPCGetFileInfo", gfs.GetFileInfoArg{Path: path}, &f)
 	if err != nil {
 		gfs.DebugMsgToFile(fmt.Sprintf("append file path <%s> offset <%d> error <%s>", path, offset, err), gfs.CLIENT, c.identifier)
 		return
