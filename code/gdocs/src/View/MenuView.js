@@ -213,7 +213,7 @@ class MenuView extends React.Component{
                             this.state.ifBin? (this.state.bin.map(item=>(
                                 <div className="media text-muted pt-3" key={item.id}>
                                     <div className="row mb-4 media-body pb-3 mb-0 small lh-125 border-bottom border-gray">
-                                        <Link to={{pathname:"/excel",state:{id:item.id,filename:item.filename}}} className="col-md-4 themed-grid-col">{item.filename}</Link>
+                                        <Link to={{pathname:"/excel",state:{id:item.id,filename:item.filename,version:item.version}}} className="col-md-4 themed-grid-col">{item.filename}</Link>
                                         <div className="col-md-3 themed-grid-col">{item.creator}</div>
                                         <div className="col-md-2 themed-grid-col">{item.recent}</div>
                                         <div className="col-md-3 themed-grid-col">
@@ -226,12 +226,12 @@ class MenuView extends React.Component{
                                 (this.state.files.map(item=>(
                             <div className="media text-muted pt-3" key={item.id}>
                                 <div className="row mb-4 media-body pb-3 mb-0 small lh-125 border-bottom border-gray">
-                                    <Link to={{pathname:"/excel",state:{id:item.id,filename:item.filename}}} className="col-md-4 themed-grid-col">{item.filename}</Link>
+                                    <Link to={{pathname:"/excel",state:{id:item.id,filename:item.filename,version:item.version}}} className="col-md-4 themed-grid-col">{item.filename}</Link>
                                     <div className="col-md-3 themed-grid-col">{item.creator}</div>
                                     <div className="col-md-2 themed-grid-col">{item.recent}</div>
                                     <div className="col-md-3 themed-grid-col">
                                         <button type="button" className="btn btn-danger btn-sm" onClick={()=>this.deleteFile(item.id)}>删除</button>
-                                        <button type="button" className="btn btn-danger btn-sm" onClick={()=>this.gotoHistory(item.id)}>编辑记录</button>
+                                        <button type="button" className="btn btn-link btn-sm" onClick={()=>this.gotoHistory(item.id)}>编辑记录</button>
                                     </div>
                                 </div>
                             </div>

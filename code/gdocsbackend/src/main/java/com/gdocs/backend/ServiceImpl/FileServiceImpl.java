@@ -227,7 +227,7 @@ public class FileServiceImpl implements FileService {
             {
                 return 402;
             }
-
+            String data = (String) rReplyMap.get("Data");
             //创建新文件
             JSONObject createObject = new JSONObject();
             createObject.put("Path",fileId + "_" + newVersion + ".txt");
@@ -246,7 +246,7 @@ public class FileServiceImpl implements FileService {
             //写入新文件
             JSONObject writeObject = new JSONObject();
             writeObject.put("Path",fileId + "_" + newVersion + ".txt");
-            writeObject.put("Data",readReply);
+            writeObject.put("Data",data);
             String writeReply;
             try {
                 writeReply = HTTPUtil.HttpRestClient(BASIC_URL+ APPEND_URL, HttpMethod.POST,writeObject);

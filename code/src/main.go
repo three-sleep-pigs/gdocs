@@ -10,23 +10,92 @@ import (
 	"./gfs/master"
 )
 
-func main() {
-	m := master.NewAndServe("127.0.0.1:8081", "./master")
-	cs1 := chunkserver.NewChunkServer("127.0.0.1:8082", "127.0.0.1:8081", "./chunk1")
-	cs2 := chunkserver.NewChunkServer("127.0.0.1:8083", "127.0.0.1:8081", "./chunk2")
-	cs3 := chunkserver.NewChunkServer("127.0.0.1:8084", "127.0.0.1:8081", "./chunk3")
-	client.NewClient("127.0.0.1:8081", "127.0.0.1:8085")
+func printUsage() {
+	fmt.Println("Usage:")
+	fmt.Println("master      <addr> <root path>")
+	fmt.Println("chunkserver <addr> <root path> <master addr>")
+	fmt.Println("client      <addr> <master addr>")
+	fmt.Println()
+}
+
+func runMaster() {
+	if len(os.Args) < 4 {
+		printUsage()
+		return
+	}
+	m := master.NewAndServe(os.Args[2], os.Args[3])
+	if m == nil {
+		fmt.Println("start master fail")
+		return
+	}
 
 	for {
-		fmt.Println("print \"q\" to shut down all")
+		fmt.Println("print \"q\" to shut down master")
 		reader := bufio.NewReader(os.Stdin)
 		res, _ := reader.ReadString('\n')
 		if res[:1] == "q" {
-			cs1.Shutdown()
-			cs2.Shutdown()
-			cs3.Shutdown()
 			m.Shutdown()
 			return
 		}
+	}
+}
+
+func runChunkServer() {
+	if len(os.Args) < 5 {
+		printUsage()
+		return
+	}
+	cs := chunkserver.NewChunkServer(os.Args[2], os.Args[4], os.Args[3])
+	if cs == nil {
+		fmt.Println("start chunk server fail")
+		return
+	}
+
+	for {
+		fmt.Println("print \"q\" to shut down chunk server")
+		reader := bufio.NewReader(os.Stdin)
+		res, _ := reader.ReadString('\n')
+		if res[:1] == "q" {
+			cs.Shutdown()
+			return
+		}
+	}
+}
+
+func runClient() {
+	if len(os.Args) < 4 {
+		printUsage()
+		return
+	}
+	c := client.NewClient(os.Args[3], os.Args[2])
+	if c == nil {
+		fmt.Println("start client fail")
+		return
+	}
+
+	for {
+		fmt.Println("print \"q\" to shut down client")
+		reader := bufio.NewReader(os.Stdin)
+		res, _ := reader.ReadString('\n')
+		if res[:1] == "q" {
+			return
+		}
+	}
+}
+
+func main() {
+	if len(os.Args) < 2 {
+		printUsage()
+		return
+	}
+	switch os.Args[1] {
+	case "master":
+		runMaster()
+	case "chunkserver":
+		runChunkServer()
+	case "client":
+		runClient()
+	default:
+		printUsage()
 	}
 }

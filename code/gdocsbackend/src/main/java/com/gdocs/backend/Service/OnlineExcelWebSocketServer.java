@@ -35,7 +35,7 @@ import static com.gdocs.backend.Util.Constant.*;
 @Slf4j
 @Component
 @Service
-@ServerEndpoint(value = "/excelSocket/{name}/{file}", configurator = GetHttpSessionConfigurator.class)
+@ServerEndpoint(value = "/excelSocket/{name}/{file}/{version}", configurator = GetHttpSessionConfigurator.class)
 public class OnlineExcelWebSocketServer {
     @Autowired
     private EditDao editDao;
@@ -60,6 +60,8 @@ public class OnlineExcelWebSocketServer {
     private Integer fileId;
 
     private boolean edited;
+
+    private Integer version;
     /**
      * 连接成功调用的方法
      * org.springframework.boot.web.servlet.server.Session requestSession,
@@ -67,13 +69,14 @@ public class OnlineExcelWebSocketServer {
      * @param session 可选的参数。与某个客户端的连接会话
      */
     @OnOpen
-    public void onOpen(Session session, @PathParam("name") String name,@PathParam("file") Integer file) {
+    public void onOpen(Session session, @PathParam("name") String name,@PathParam("file") Integer file,@PathParam("version") Integer v) {
 //        正常情况下，可以用登录的用户名或者token来作为userId
 //        如下可以获取到httpSession，与当前的session(socket)不是一样的
 //        HttpSession httpSession = (HttpSession) config.getUserProperties().get(HttpSession.class.getName());
 //        userId = String.valueOf(httpSession.getAttribute("你的token key"));
         userId = name;
         fileId = file;
+        version = v;
         edited = false;
         if (tokenMap.get(userId) == null) {
             onlineCount.incrementAndGet();
@@ -127,7 +130,7 @@ public class OnlineExcelWebSocketServer {
                 edited = true;
                 log.info(bson.toString());
                 JSONObject jsonObject = new JSONObject();
-                jsonObject.put("Path",fileId + ".txt");
+                jsonObject.put("Path",fileId + "_" + version + ".txt");
                 jsonObject.put("Data",bson.toString()+",");
                 String s = null;
                 try {

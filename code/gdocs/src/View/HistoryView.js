@@ -22,7 +22,8 @@ class HistoryView extends React.Component{
             },
             body:JSON.stringify({
                 file:file,
-                id:id,
+                edit:id,
+                username:localStorage.getItem("username")
             }),
             mode:'cors',
             cache:"default"})
@@ -30,6 +31,7 @@ class HistoryView extends React.Component{
             .then(data => {
                 if(data===200){
                     alert("回滚成功")
+                    this.getHistory()
                 }
                 else{
                     alert("回滚失败");
@@ -76,19 +78,22 @@ class HistoryView extends React.Component{
                     <div className="my-3 p-3 bg-white rounded shadow-sm">
                         <div className="media text-muted pt-3">
                             <div className="row mb-4 media-body pb-3 mb-0 small lh-125 border-bottom border-gray">
-                                <h6 className="col-md-4 themed-grid-col">编辑人</h6>
-                                <h6 className="col-md-4 themed-grid-col">最近修改</h6>
-                                <h6 className="col-md-4 themed-grid-col">操作</h6>
+                                <h6 className="col-md-3 themed-grid-col">编辑人</h6>
+                                <h6 className="col-md-3 themed-grid-col">编辑时间</h6>
+                                <h6 className="col-md-3 themed-grid-col">编辑类型</h6>
+                                <h6 className="col-md-3 themed-grid-col">操作</h6>
                             </div>
                         </div>
                         {
                              (this.state.records.map(item=>(
                                     <div className="media text-muted pt-3" key={item.id}>
                                         <div className="row mb-4 media-body pb-3 mb-0 small lh-125 border-bottom border-gray">
-                                            <div className="col-md-4 themed-grid-col">{item.editor}</div>
-                                            <div className="col-md-4 themed-grid-col">{item.recent}</div>
-                                            <div className="col-md-4 themed-grid-col">
-                                                <button type="button" className="btn btn-danger btn-sm" onClick={()=>this.rollback(item.id)}>回滚</button>
+                                            <div className="col-md-3 themed-grid-col">{item.editor}</div>
+                                            <div className="col-md-3 themed-grid-col">{item.edittime}</div>
+                                            <div className="col-md-3 themed-grid-col">{item.operation}</div>
+                                            <div className="col-md-3 themed-grid-col">
+                                                <button type="button" className="btn btn-info btn-sm" onClick={()=>this.rollback(item.id)}>查看</button>
+                                                <button type="button" className="btn btn-link btn-sm" onClick={()=>this.rollback(item.id)}>回滚</button>
                                             </div>
                                         </div>
                                     </div>
