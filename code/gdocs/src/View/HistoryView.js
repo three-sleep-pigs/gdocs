@@ -56,6 +56,14 @@ class HistoryView extends React.Component{
             .then(response => response.json())
             .then(data => {
                 console.log(data);
+                data.map(item=>{
+                    if(item.operation===0) item.operation="创建";
+                    else if(item.operation===1) item.operation="修改";
+                    else if(item.operation===2) item.operation="删除";
+                    else if(item.operation===3) item.operation="恢复";
+                    else if(item.operation===4) item.operation="回滚";
+                    return item;
+                });
                 that.setState({
                     records: data,
                 });
