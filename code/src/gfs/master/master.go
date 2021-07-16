@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/rpc"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 )
@@ -576,8 +575,8 @@ func (m *Master) RPCGetChunkHandle(args gfs.GetChunkHandleArg, reply *gfs.GetChu
 		reply.Handle, addrs, e = m.createChunk(&fileMetadata, addrs)
 		Set(m.zk, GetKey(args.Path, FILEMETADATA), fileMetadata)
 		if e != nil {
-			e = fmt.Errorf("create chunk for path %s failed in some chunk servers %s", args.Path, err)
-			gfs.DebugMsgToFile(fmt.Sprintf("RPCGetChunkHandle path <%s> index <%d> error <%s>", args.Path, args.Index, err), gfs.MASTER, m.address)
+			e = fmt.Errorf("create chunk for path %s failed in some chunk servers %s", args.Path, e)
+			gfs.DebugMsgToFile(fmt.Sprintf("RPCGetChunkHandle path <%s> index <%d> error <%s>", args.Path, args.Index, e), gfs.MASTER, m.address)
 			return e
 		}
 
