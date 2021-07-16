@@ -32,7 +32,7 @@ class HistoryView extends React.Component{
                     alert("回滚成功")
                 }
                 else{
-                    alert("删除失败");
+                    alert("回滚失败");
                 }
         }).catch(function (ex) {
             console.log('parsing failed', ex)
