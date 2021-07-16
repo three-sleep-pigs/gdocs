@@ -92,6 +92,7 @@ class HistoryView extends React.Component{
                                             <div className="col-md-3 themed-grid-col">{item.edittime}</div>
                                             <div className="col-md-3 themed-grid-col">{item.operation}</div>
                                             <div className="col-md-3 themed-grid-col">
+
                                                 <button type="button" className="btn btn-info btn-sm" onClick={()=>this.rollback(item.id)}>查看</button>
                                                 <button type="button" className="btn btn-link btn-sm" onClick={()=>this.rollback(item.id)}>回滚</button>
                                             </div>

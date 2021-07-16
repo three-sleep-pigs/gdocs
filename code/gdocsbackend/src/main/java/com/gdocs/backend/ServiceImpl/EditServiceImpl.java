@@ -1,6 +1,7 @@
 package com.gdocs.backend.ServiceImpl;
 
 import com.alibaba.fastjson.JSONObject;
+import com.gdocs.backend.Dao.EditDao;
 import com.gdocs.backend.Dao.GFileDao;
 import com.gdocs.backend.Entity.Edit;
 import com.gdocs.backend.Entity.GFile;
@@ -22,16 +23,24 @@ import static com.gdocs.backend.Util.Constant.*;
 public class EditServiceImpl implements EditService {
     @Autowired
     private GFileDao gFileDao;
+    @Autowired
+    private EditDao editDao;
 
     @Override
-    public String downExcelData(Integer id,Integer version)
+    public String downExcelData(Integer id,Integer version,Integer edit)
     {
         Optional<GFile> optionalGFile = gFileDao.getGFileById(id);
         if (optionalGFile.isPresent())
         {
             GFile gFile = optionalGFile.get();
             String name = gFile.getFilename();
-            Integer length = gFile.getLength();
+            Integer length;
+            if (edit == -1)
+            {
+                length = gFile.getLength();
+            } else {
+                length = editDao.getById(id).getLength();
+            }
             JSONObject jsonObject = new JSONObject();
             jsonObject.put("Path",id + "_" + version +".txt");
             jsonObject.put("Offset",0);
