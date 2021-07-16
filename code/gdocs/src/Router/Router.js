@@ -6,6 +6,7 @@ import RegisterView from "../View/RegisterView";
 import MenuView from "../View/MenuView";
 import HomeView from "../View/HomeView";
 import {history} from "../Utils/history";
+import HistoryView from "../View/HistoryView";
 
 class GDocsRouter extends React.Component{
     constructor(props) {
@@ -24,6 +25,7 @@ class GDocsRouter extends React.Component{
                     <Route exact path="/login" component={LoginView}/>
                     <Route exact path="/register" component={RegisterView}/>
                     <Route exact path="/menu" component={MenuView}/>
+                    <Route exact path="/history" component={HistoryView}/>
                     <Route exact path="/excel" component={ExcelView}/>
                     <Route exact path="/" component={HomeView}/>
                     <Redirect from="/*" to="/home"/>

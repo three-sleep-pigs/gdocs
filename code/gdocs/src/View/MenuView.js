@@ -174,6 +174,10 @@ class MenuView extends React.Component{
             pageName:"回收站"
         });
     }
+
+    gotoHistory=(id)=>{
+        this.props.history.push({pathname:"/history",state:{id:id}})
+    }
     render() {
         return(
             <div className="menu-page">
@@ -227,6 +231,7 @@ class MenuView extends React.Component{
                                     <div className="col-md-2 themed-grid-col">{item.recent}</div>
                                     <div className="col-md-3 themed-grid-col">
                                         <button type="button" className="btn btn-danger btn-sm" onClick={()=>this.deleteFile(item.id)}>删除</button>
+                                        <button type="button" className="btn btn-danger btn-sm" onClick={()=>this.gotoHistory(item.id)}>编辑记录</button>
                                     </div>
                                 </div>
                             </div>
