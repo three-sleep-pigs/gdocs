@@ -1,11 +1,11 @@
 package com.gdocs.backend.Service;
 
-import com.gdocs.backend.Reply.EditReply;
+import com.gdocs.backend.Entity.Edit;
+import org.springframework.web.bind.annotation.RequestParam;
+
+import java.util.List;
 
 public interface EditService {
-    Integer startEdit(String username,Integer id);
+    String downExcelData(Integer id,Integer version);
 
-    EditReply getEditors(Integer id);
-
-    Integer exitEdit(String username,Integer id);
 }

@@ -1,12 +1,13 @@
 package main
 
 import (
-	"./gfs/chunkserver"
-	"./gfs/client"
-	"./gfs/master"
 	"bufio"
 	"fmt"
 	"os"
+
+	"./gfs/chunkserver"
+	"./gfs/client"
+	"./gfs/master"
 )
 
 func printUsage() {
@@ -31,7 +32,7 @@ func runMaster() {
 	for {
 		fmt.Println("print \"q\" to shut down master")
 		reader := bufio.NewReader(os.Stdin)
-		res,_ := reader.ReadString('\n')
+		res, _ := reader.ReadString('\n')
 		if res[:1] == "q" {
 			m.Shutdown()
 			return
@@ -53,7 +54,7 @@ func runChunkServer() {
 	for {
 		fmt.Println("print \"q\" to shut down chunk server")
 		reader := bufio.NewReader(os.Stdin)
-		res,_ := reader.ReadString('\n')
+		res, _ := reader.ReadString('\n')
 		if res[:1] == "q" {
 			cs.Shutdown()
 			return
@@ -75,7 +76,7 @@ func runClient() {
 	for {
 		fmt.Println("print \"q\" to shut down client")
 		reader := bufio.NewReader(os.Stdin)
-		res,_ := reader.ReadString('\n')
+		res, _ := reader.ReadString('\n')
 		if res[:1] == "q" {
 			return
 		}

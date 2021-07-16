@@ -21,8 +21,14 @@ public class EditDaoImpl implements EditDao {
     }
 
     @Override
-    public int insertEdit(Integer fileId, String editor, Time edittime)
+    public Edit save (Edit edit)
     {
-        return editRepository.insertEdit(fileId, editor, edittime);
+        return editRepository.save(edit);
+    }
+
+    @Override
+    public Edit getById(Integer id)
+    {
+        return editRepository.getById(id);
     }
 }

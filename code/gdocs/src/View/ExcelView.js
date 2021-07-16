@@ -9,7 +9,7 @@ class ExcelView extends React.Component{
         return(
             <div className="excel-page">
                 <header className="App-header">
-                    <Luckysheet id={this.props.location.state.id} filename={this.props.location.state.filename}/>
+                    <Luckysheet id={this.props.location.state.id} filename={this.props.location.state.filename} version={this.props.location.state.version}/>
                 </header>
             </div>
         );

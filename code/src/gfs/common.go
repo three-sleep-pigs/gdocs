@@ -2,7 +2,7 @@ package gfs
 
 import (
 	"os"
-	"syscall"
+	//"syscall"
 	"time"
 )
 
@@ -12,8 +12,8 @@ type DataBufferID struct {
 }
 
 type ChunkReplicaInfo struct {
-	Primary 	 string
-	Expire 		 time.Time
+	Primary      string
+	Expire       time.Time
 	Secondaries  []string
 	BufferExpire time.Time
 }
@@ -21,23 +21,23 @@ type ChunkReplicaInfo struct {
 type TYPE int
 
 const (
-	CLIENT = 0
-	MASTER = 1
+	CLIENT      = 0
+	MASTER      = 1
 	CHUNKSERVER = 2
 )
 
 const (
-	DEBUG = false
-	ClientDirectory	= "../debug/"
-	ClientDebugFilePrefix = "DEBUG_client_"
-	ClientMSGPrefix = "[CLIENT] "
-	MasterDirectory	= "../debug/"
-	MasterDebugFilePrefix = "DEBUG_master_"
-	MasterMSGPrefix = "[MASTER] "
-	ChunkServerDirectory	= "../debug/"
+	DEBUG                      = false
+	ClientDirectory            = "../debug/"
+	ClientDebugFilePrefix      = "DEBUG_client_"
+	ClientMSGPrefix            = "[CLIENT] "
+	MasterDirectory            = "../debug/"
+	MasterDebugFilePrefix      = "DEBUG_master_"
+	MasterMSGPrefix            = "[MASTER] "
+	ChunkServerDirectory       = "../debug/"
 	ChunkServerDebugFilePrefix = "DEBUG_chunk_server_"
-	ChunkServerMSGPrefix = "[CHUNKSERVER] "
-	DebugFileSuffix = ".txt"
+	ChunkServerMSGPrefix       = "[CHUNKSERVER] "
+	DebugFileSuffix            = ".txt"
 )
 
 func DebugMsgToFile(msg string, t TYPE, description string) {
@@ -62,14 +62,14 @@ func DebugMsgToFile(msg string, t TYPE, description string) {
 	default:
 		return
 	}
-	file, err := os.OpenFile(openPath, os.O_WRONLY | os.O_CREATE | os.O_APPEND , 0777)
+	file, err := os.OpenFile(openPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0777)
 	if err != nil {
 		return
 	}
 	defer file.Close()
 	// use file lock to support concurrent write
-	syscall.Flock(int(file.Fd()), syscall.LOCK_EX)
-	defer syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+	//syscall.Flock(int(file.Fd()), syscall.LOCK_EX)
+	//defer syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
 
 	file.WriteString(toWrite)
 }
@@ -90,12 +90,12 @@ const (
 	ServerTimeout       = 1 * time.Second
 
 	// chunk server
-	HeartbeatInterval   = 100 * time.Millisecond
+	HeartbeatInterval         = 100 * time.Millisecond
 	GarbageCollectionInterval = 2 * time.Hour
-	MutationMaxTime 	= 1 * time.Second
+	MutationMaxTime           = 1 * time.Second
 
 	// client
-	ReplicaBufferTick 	= 500 * time.Millisecond
+	ReplicaBufferTick   = 500 * time.Millisecond
 	ReplicaBufferExpire = 1 * time.Second
 )
 
