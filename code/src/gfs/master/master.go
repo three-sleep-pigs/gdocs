@@ -2,12 +2,10 @@ package master
 
 import (
 	"../../gfs"
-	"../cmap"
 	"fmt"
 	"github.com/samuel/go-zookeeper/zk"
 	"net"
 	"net/rpc"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -18,7 +16,6 @@ import (
 // Master struct
 type Master struct {
 	address    string // master server address
-	serverRoot string
 	l          net.Listener
 	zk         *zk.Conn
 }
@@ -47,34 +44,28 @@ type ChunkServerInfo struct {
 	valid 		  bool
 }
 
-// TODO: create next handle, handle error
-
 // NewAndServe starts a master and returns the pointer to it.
-func NewAndServe(address string, serverRoot string) *Master {
+func NewAndServe(address string) *Master {
 	m := &Master{
 		address:    address,
-		serverRoot: serverRoot,
-		nextHandle: 0,
 	}
 	gfs.DebugMsgToFile("new a master", gfs.MASTER, m.address)
-	// initial 3 concurrent maps
-	m.fileNamespace = cmap.New()
-	m.chunkNamespace = cmap.New()
-	m.chunkServerInfos = cmap.New()
 
-	// initial metadata
-	_, err := os.Stat(serverRoot) //check whether rootDir exists, if not, mkdir it
+	// connect zookeeper
+	conn, err := Connect()
 	if err != nil {
-		err = os.Mkdir(serverRoot, 0777)
-		if err != nil {
-			gfs.DebugMsgToFile(fmt.Sprintf("mkdir error <%s>", err), gfs.MASTER, m.address)
-			return nil
-		}
+		gfs.DebugMsgToFile(fmt.Sprintf("zookeeper connect error <%s>", err), gfs.MASTER, m.address)
+		return nil
 	}
-	err = m.loadMeta()
-	if err != nil {
-		gfs.DebugMsgToFile(fmt.Sprintf("loadMeta error <%s>", err), gfs.MASTER, m.address)
-	}
+	m.zk = conn
+
+	// if NextHandle doesn't exist, create it and set it to 0
+	acls := zk.WorldACL(zk.PermAll)
+	m.zk.Create(NextHandle, []byte("0"), 0, acls)
+	// TODO: handle error
+	// TODO: create ReplicaNeedList
+	list := make([]int64, 0)
+	SetIfAbsent(m.zk, ReplicaNeedList, list)
 
 	// register rpc server
 	rpcs := rpc.NewServer()
@@ -85,7 +76,7 @@ func NewAndServe(address string, serverRoot string) *Master {
 	}
 	l, e := net.Listen("tcp", string(m.address))
 	if e != nil {
-		gfs.DebugMsgToFile(fmt.Sprintf("listen error <%s>", err), gfs.MASTER, m.address)
+		gfs.DebugMsgToFile(fmt.Sprintf("listen error <%s>", e), gfs.MASTER, m.address)
 		return nil
 	}
 	m.l = l
@@ -105,18 +96,14 @@ func NewAndServe(address string, serverRoot string) *Master {
 		}
 	}()
 
-	// handle timed task
+	// handle timed chunk server check
 	go func() {
 		serverCheckTicker := time.Tick(gfs.ServerCheckInterval)
 		for {
-			select {
-			case <-serverCheckTicker:
-				{
-					err := m.serverCheck()
-					if err != nil {
-						gfs.DebugMsgToFile(fmt.Sprintf("serverCheck error <%s>", err), gfs.MASTER, m.address)
-					}
-				}
+			<-serverCheckTicker
+			err := m.serverCheck()
+			if err != nil {
+				gfs.DebugMsgToFile(fmt.Sprintf("serverCheck error <%s>", err), gfs.MASTER, m.address)
 			}
 		}
 	}()

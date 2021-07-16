@@ -25,6 +25,9 @@ const (
 	ReplicaNeedList = "ReplicaNeedList"
 	ReplicaNeedListLock = "LockReplicaNeedList"
 	NextHandle = "NextHandle"
+	ChunkMetaKeyList = "ChunkMetaKey"
+	FileMetaKeyList = "FileMetaKey"
+	ChunkServerKeyList = "ChunkServerKey"
 )
 
 func GetKey(Key string, Type int) string {
@@ -56,21 +59,6 @@ func Connect() (*zk.Conn, error) {
 	return conn, nil
 }
 
-func Lock(conn *zk.Conn, toLock string) error {
-	for {
-		data, sate, err := conn.Get(toLock)
-		if err != nil {
-			return err
-		}
-		if string(data) == "0" {
-			_, e := conn.Set(toLock, []byte("1"), sate.Version)
-			if e == nil {
-				return nil
-			}
-		}
-	}
-}
-
 func UnLock(conn *zk.Conn, toUnLock string) error {
 	data, sate, err := conn.Get(toUnLock)
 	if err != nil {
@@ -89,14 +77,25 @@ func UnLock(conn *zk.Conn, toUnLock string) error {
 	return fmt.Errorf("[zookeeper]unlock fail")
 }
 
-// CreateAndLock create a lock and lock it
-func CreateAndLock(conn *zk.Conn, toCreate string) error {
+// Lock create a lock and lock it
+func Lock(conn *zk.Conn, toLock string) error {
 	acls := zk.WorldACL(zk.PermAll)
-	_, err := conn.Create(toCreate, []byte("1"), 0, acls)
-	if err != nil {
-		return Lock(conn, toCreate)
+	_, err := conn.Create(toLock, []byte("1"), 0, acls)
+	if err == nil {
+		return nil
 	}
-	return nil
+	for {
+		data, sate, er := conn.Get(toLock)
+		if er != nil {
+			return er
+		}
+		if string(data) == "0" {
+			_, e := conn.Set(toLock, []byte("1"), sate.Version)
+			if e == nil {
+				return nil
+			}
+		}
+	}
 }
 
 func GetHandle(conn *zk.Conn) (int64, error) {
@@ -116,6 +115,7 @@ func GetHandle(conn *zk.Conn) (int64, error) {
 	}
 }
 
+// SetIfAbsent will create a new tuple if there is no related tuple
 func SetIfAbsent(conn *zk.Conn, key string, value interface{}) bool {
 	acls := zk.WorldACL(zk.PermAll)
 	data, _ := json.Marshal(value)
@@ -126,6 +126,7 @@ func SetIfAbsent(conn *zk.Conn, key string, value interface{}) bool {
 	return true
 }
 
+// Get remember to use & annotation
 func Get(conn *zk.Conn, key string, value interface{}) bool {
 	data, _, err := conn.Get(key)
 	if err != nil {
@@ -147,6 +148,7 @@ func Set(conn *zk.Conn, key string, value interface{}) error {
 	if err == nil {
 		return nil
 	}
+	// assume that key exists in the related key list stored in zookeeper
 	for {
 		_, sate, e := conn.Get(key)
 		if e != nil {
@@ -168,6 +170,146 @@ func Remove(conn *zk.Conn, key string) {
 		err := conn.Delete(key, sate.Version)
 		if err == nil {
 			return
+		}
+	}
+}
+
+// SetIfAbsentInMap will create a new tuple if there is no related tuple and add it to key list
+func SetIfAbsentInMap(conn *zk.Conn, key string, value interface{}, Type int) bool {
+	acls := zk.WorldACL(zk.PermAll)
+	data, _ := json.Marshal(value)
+	_, err := conn.Create(key, data, 0, acls)
+	if err != nil {
+		return false
+	}
+	var keyList string
+	switch Type {
+	case CHUNKSERVER:
+		keyList = ChunkServerKeyList
+		break
+	case CHUNKMETADATA:
+		keyList = ChunkMetaKeyList
+		break
+	case FILEMETADATA:
+		keyList = FileMetaKeyList
+	default:
+		return false
+	}
+	for {
+		rawList, sate, e := conn.Get(keyList)
+		if e != nil {
+			// TODO: handle consistency error
+			return true
+		}
+		var list []string
+		err = json.Unmarshal(rawList, &list)
+		if err != nil {
+			// TODO: handle consistency error
+			return true
+		}
+		list = append(list, key)
+		appended, _ := json.Marshal(list)
+		_, er := conn.Set(keyList, appended, sate.Version)
+		if er == nil {
+			return true
+		}
+	}
+}
+
+// SetInMap will create a new tuple if there is no related tuple and add it to key list
+// SetInMap will set the related tuple to new value if it exists
+func SetInMap(conn *zk.Conn, key string, value interface{}, Type int) error {
+	acls := zk.WorldACL(zk.PermAll)
+	data, _ := json.Marshal(value)
+	_, err := conn.Create(key, data, 0, acls)
+	if err == nil {
+		var keyList string
+		switch Type {
+		case CHUNKSERVER:
+			keyList = ChunkServerKeyList
+			break
+		case CHUNKMETADATA:
+			keyList = ChunkMetaKeyList
+			break
+		case FILEMETADATA:
+			keyList = FileMetaKeyList
+		default:
+			return fmt.Errorf("unknown type")
+		}
+		for {
+			rawList, sate, e := conn.Get(keyList)
+			if e != nil {
+				return e
+			}
+			var list []string
+			err = json.Unmarshal(rawList, &list)
+			if err != nil {
+				return err
+			}
+			list = append(list, key)
+			appended, _ := json.Marshal(list)
+			_, er := conn.Set(keyList, appended, sate.Version)
+			if er == nil {
+				return nil
+			}
+		}
+	}
+	// assume that key exists in the related key list stored in zookeeper
+	for {
+		_, sate, e := conn.Get(key)
+		if e != nil {
+			return e
+		}
+		_, er := conn.Set(key, data, sate.Version)
+		if er == nil {
+			return nil
+		}
+	}
+}
+
+func RemoveInMap(conn *zk.Conn, key string, Type int) {
+	for {
+		_, sate, e := conn.Get(key)
+		if e != nil {
+			return
+		}
+		err := conn.Delete(key, sate.Version)
+		if err == nil {
+			var keyList string
+			switch Type {
+			case CHUNKSERVER:
+				keyList = ChunkServerKeyList
+				break
+			case CHUNKMETADATA:
+				keyList = ChunkMetaKeyList
+				break
+			case FILEMETADATA:
+				keyList = FileMetaKeyList
+			default:
+				return
+			}
+			for {
+				rawList, state, er := conn.Get(keyList)
+				if er != nil {
+					return
+				}
+				var list []string
+				err = json.Unmarshal(rawList, &list)
+				if err != nil {
+					return
+				}
+				var newList []string
+				for _, v := range list{
+					if v != key {
+						newList = append(newList, v)
+					}
+				}
+				deleted, _ := json.Marshal(newList)
+				_, er = conn.Set(keyList, deleted, state.Version)
+				if er == nil {
+					return
+				}
+			}
 		}
 	}
 }

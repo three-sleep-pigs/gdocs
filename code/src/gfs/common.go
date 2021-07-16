@@ -85,8 +85,6 @@ const (
 	MaxAppendSize      = MaxChunkSize / 4
 
 	ServerCheckInterval = 400 * time.Millisecond
-	StoreMetaInterval   = 1 * time.Hour
-	MetaFileName        = "gfs-master.meta"
 	ServerTimeout       = 1 * time.Second
 
 	// chunk server
