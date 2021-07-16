@@ -89,6 +89,7 @@ const (
 
 	// chunk server
 	HeartbeatInterval   = 100 * time.Millisecond
+	StoreMetaInterval   = 1 * time.Hour
 	GarbageCollectionInterval = 2 * time.Hour
 	MutationMaxTime 	= 1 * time.Second
 
