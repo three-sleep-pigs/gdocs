@@ -28,6 +28,7 @@ const (
 	ChunkMetaKeyList = "ChunkMetaKey"
 	FileMetaKeyList = "FileMetaKey"
 	ChunkServerKeyList = "ChunkServerKey"
+	ServerCheckLock = "LockServerCheck"
 )
 
 func GetKey(Key string, Type int) string {
