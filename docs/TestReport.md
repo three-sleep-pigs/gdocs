@@ -5,6 +5,11 @@
 ## Naive gDocs
 
 ### 1. correctness test
+*Naive gDocs*的后端采用junit对Controller层与service层的逻辑进行正确性测试。
+测试用例遵循分支覆盖的原则进行设计，使得程序中每个判断的取真分支和取假分支至少经历一次。
+
+测试文件见`/code/gdocsbackend/src/test/java/com/gdocs/backend`目录下3个`$ControllerTest.java`文件，测试的接口如下所示，正确性测试全部通过。
+* **LoginControllerTest**
 
 ### 2. performance test
 
