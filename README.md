@@ -5,7 +5,7 @@ Enter your team members here:
 ```
 [Leader]   518021910515 - 许嘉琦: {X}%
 [Member 1]  - 廖苡辰: {Y}%
-[Member 2] ID - 李萱: {Z}%
+[Member 2] 518030910456 - 李萱: {Z}%
 [Member 3] 518030910168 - 郭梦琪: {Z}%
 ```
 
@@ -22,7 +22,8 @@ your-repo/
 +-- code/
     +-- gdocs/ (naive gdocs frontend implemented by react)
     +-- gdocsbackend/ (naive gdocs backend implemented by springboot)
-    +-- src/ (gfs implemented by go)
+    +-- src/ (dfs implemented by go)
+    +-- ddl.sql (mysql ddl)
     +-- README.md (a brief introduction to naive gdocs)
 +-- docs/
     +-- Team.txt (All the members' {ID, name} and the workload of each member)

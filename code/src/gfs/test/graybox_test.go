@@ -199,7 +199,7 @@ func TestRenameFile(t *testing.T) {
 	gfsShutDown()
 }
 
-func TestFileNameSpaceConcurrently(t *testing.T) {
+func TestCreateAndDeleteConcurrently(t *testing.T) {
 	println("GFS FILES CLEAN")
 	gfsClean()
 	println("GFS START")
@@ -388,6 +388,7 @@ func TestGetFileInfo(t *testing.T) {
 // if the append would cause the chunk to exceed the maximum size
 // this chunk should be pad and the data should be appended to the next chunk
 func TestPadOver(t *testing.T) {
+	c = RunClient()
 	if c == nil {
 		t.Fatalf("start a client fail")
 	}
@@ -433,6 +434,7 @@ func TestPadOver(t *testing.T) {
 
 // big data that invokes several chunks
 func TestWriteReadBigData(t *testing.T) {
+	c = RunClient()
 	if c == nil {
 		t.Fatalf("start a client fail")
 	}
@@ -497,6 +499,8 @@ func TestWriteReadBigData(t *testing.T) {
 
 // a concurrent producer-consumer number collector for testing race contiditon
 func TestConcurrentReadAndAppend(t *testing.T) {
+	c = RunClient()
+
 	if c == nil {
 		t.Fatalf("start a client fail")
 	}
@@ -567,6 +571,7 @@ func TestConcurrentReadAndAppend(t *testing.T) {
  */
 // Shutdown primary chunk server during appending
 func TestShutdownPrimary(t *testing.T) {
+	c = RunClient()
 	if c == nil {
 		t.Fatalf("start a client fail")
 	}
@@ -647,6 +652,7 @@ func TestShutdownPrimary(t *testing.T) {
 }
 // Shutdown replica chunk server during appending
 func TestShutdownReplica(t *testing.T) {
+	c = RunClient()
 	if c == nil {
 		t.Fatalf("start a client fail")
 	}
@@ -727,9 +733,10 @@ func TestShutdownReplica(t *testing.T) {
 }
 
 /*
- *  TEST SUITE 5 - Persistent Tests
- */
+*  TEST SUITE 5 - Persistent Tests
+*/
 func TestPersistent(t *testing.T) {
+	c = RunClient()
 	if c == nil {
 		t.Fatalf("start a client fail")
 	}
@@ -785,8 +792,8 @@ func TestPersistent(t *testing.T) {
 }
 
 /*
- *  TEST SUITE - Performance Test
- */
+*  TEST SUITE 6 - Performance Tests
+*/
 func BenchmarkWrite(b *testing.B) {
 	println("GFS FILES CLEAN")
 	gfsClean()
