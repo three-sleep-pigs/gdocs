@@ -1,0 +1,170 @@
+
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html id="htmlId">
+<head>
+  <title>Coverage Report :: EditServiceImpl</title>
+  <style type="text/css">
+    @import "../../.css/coverage.css";
+  </style>
+</head>
+
+<body>
+<div class="header"></div>
+
+<div class="content">
+<div class="breadCrumbs">
+    [ <a href="../../index.html">all classes</a> ]
+    [ <a href="../index.html">com.gdocs.backend.ServiceImpl</a> ]
+</div>
+
+<h1>Coverage Summary for Class: EditServiceImpl (com.gdocs.backend.ServiceImpl)</h1>
+
+<table class="coverageStats">
+<tr>
+  <th class="name">Class</th>
+<th class="coverageStat 
+">
+  Class, %
+</th>
+<th class="coverageStat 
+">
+  Method, %
+</th>
+<th class="coverageStat 
+">
+  Line, %
+</th>
+</tr>
+<tr>
+  <td class="name">EditServiceImpl</td>
+<td class="coverageStat">
+  <span class="percent">
+    100%
+  </span>
+  <span class="absValue">
+    (1/ 1)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    100%
+  </span>
+  <span class="absValue">
+    (4/ 4)
+  </span>
+</td>
+<td class="coverageStat">
+  <span class="percent">
+    83.8%
+  </span>
+  <span class="absValue">
+    (31/ 37)
+  </span>
+</td>
+</tr>
+
+</table>
+
+<br/>
+<br/>
+
+
+<div class="sourceCode"><i>1</i>&nbsp;package com.gdocs.backend.ServiceImpl;
+<i>2</i>&nbsp;
+<i>3</i>&nbsp;import com.alibaba.fastjson.JSONObject;
+<i>4</i>&nbsp;import com.gdocs.backend.Dao.EditDao;
+<i>5</i>&nbsp;import com.gdocs.backend.Dao.GFileDao;
+<i>6</i>&nbsp;import com.gdocs.backend.Entity.Edit;
+<i>7</i>&nbsp;import com.gdocs.backend.Entity.GFile;
+<i>8</i>&nbsp;import com.gdocs.backend.Service.EditService;
+<i>9</i>&nbsp;import com.gdocs.backend.Util.HTTPUtil;
+<i>10</i>&nbsp;import com.gdocs.backend.Util.JSONParse;
+<i>11</i>&nbsp;import lombok.extern.slf4j.Slf4j;
+<i>12</i>&nbsp;import org.springframework.beans.factory.annotation.Autowired;
+<i>13</i>&nbsp;import org.springframework.http.HttpMethod;
+<i>14</i>&nbsp;import org.springframework.stereotype.Service;
+<i>15</i>&nbsp;
+<i>16</i>&nbsp;import java.io.IOException;
+<i>17</i>&nbsp;import java.util.HashMap;
+<i>18</i>&nbsp;import java.util.Optional;
+<i>19</i>&nbsp;
+<i>20</i>&nbsp;import static com.gdocs.backend.Util.Constant.*;
+<i>21</i>&nbsp;
+<b class="fc"><i>22</i>&nbsp;@Slf4j</b>
+<i>23</i>&nbsp;@Service
+<b class="fc"><i>24</i>&nbsp;public class EditServiceImpl implements EditService {</b>
+<i>25</i>&nbsp;    @Autowired
+<i>26</i>&nbsp;    private GFileDao gFileDao;
+<i>27</i>&nbsp;    @Autowired
+<i>28</i>&nbsp;    private EditDao editDao;
+<i>29</i>&nbsp;
+<i>30</i>&nbsp;    @Override
+<i>31</i>&nbsp;    public String downExcelData(Integer id,Integer version,Integer edit)
+<i>32</i>&nbsp;    {
+<b class="fc"><i>33</i>&nbsp;        log.info(&quot;fileid:{},version:{},edit:{}&quot;, id,version,edit);</b>
+<b class="fc"><i>34</i>&nbsp;        Optional&lt;GFile&gt; optionalGFile = gFileDao.getGFileById(id);</b>
+<b class="fc"><i>35</i>&nbsp;        if (optionalGFile.isPresent())</b>
+<i>36</i>&nbsp;        {
+<b class="fc"><i>37</i>&nbsp;            GFile gFile = optionalGFile.get();</b>
+<b class="fc"><i>38</i>&nbsp;            String name = gFile.getFilename();</b>
+<i>39</i>&nbsp;            Integer length;
+<b class="fc"><i>40</i>&nbsp;            if (edit == -1)</b>
+<i>41</i>&nbsp;            {
+<b class="nc"><i>42</i>&nbsp;                length = gFile.getLength();</b>
+<i>43</i>&nbsp;            } else {
+<b class="fc"><i>44</i>&nbsp;                length = editDao.getById(edit).getLength();</b>
+<b class="fc"><i>45</i>&nbsp;                log.info(&quot;length:{}&quot;,length);</b>
+<i>46</i>&nbsp;            }
+<b class="fc"><i>47</i>&nbsp;            JSONObject jsonObject = new JSONObject();</b>
+<b class="fc"><i>48</i>&nbsp;            jsonObject.put(&quot;Path&quot;,id + &quot;_&quot; + version +&quot;.txt&quot;);</b>
+<b class="fc"><i>49</i>&nbsp;            jsonObject.put(&quot;Offset&quot;,0);</b>
+<b class="fc"><i>50</i>&nbsp;            jsonObject.put(&quot;Length&quot;,length);</b>
+<i>51</i>&nbsp;            String s;
+<i>52</i>&nbsp;            try {
+<b class="fc"><i>53</i>&nbsp;                s = HTTPUtil.HttpRestClient(BASIC_URL+ READ_URL, HttpMethod.POST,jsonObject);</b>
+<b class="nc"><i>54</i>&nbsp;            } catch (IOException e) {</b>
+<b class="nc"><i>55</i>&nbsp;                return &quot;连接DFS错误&quot;;</b>
+<b class="fc"><i>56</i>&nbsp;            }</b>
+<b class="fc"><i>57</i>&nbsp;            System.out.print(s);</b>
+<b class="fc"><i>58</i>&nbsp;            HashMap&lt;String,Object&gt; reply = null;</b>
+<i>59</i>&nbsp;            try {
+<b class="fc"><i>60</i>&nbsp;                reply = (HashMap&lt;String,Object&gt;) JSONParse.parse(s);</b>
+<b class="nc"><i>61</i>&nbsp;            } catch (Exception ex) {</b>
+<b class="nc"><i>62</i>&nbsp;                return &quot;解析错误&quot;;</b>
+<b class="fc"><i>63</i>&nbsp;            }</b>
+<b class="fc"><i>64</i>&nbsp;            String data = &quot;&quot;;</b>
+<b class="fc"><i>65</i>&nbsp;            if (reply != null) {</b>
+<b class="fc"><i>66</i>&nbsp;                if (reply.get(&quot;Success&quot;).equals(true))</b>
+<i>67</i>&nbsp;                {
+<b class="fc"><i>68</i>&nbsp;                    data = reply.get(&quot;Data&quot;).toString();</b>
+<b class="fc"><i>69</i>&nbsp;                    log.info(data);</b>
+<b class="fc"><i>70</i>&nbsp;                    System.out.print(&quot;GET+DATA:&quot;+data+&quot;\r&quot;);</b>
+<i>71</i>&nbsp;
+<i>72</i>&nbsp;                }
+<i>73</i>&nbsp;            }
+<b class="fc"><i>74</i>&nbsp;            return generateReply(data,name,id.toString());</b>
+<i>75</i>&nbsp;        }
+<i>76</i>&nbsp;
+<b class="nc"><i>77</i>&nbsp;        return &quot;文件不存在&quot;;</b>
+<i>78</i>&nbsp;    }
+<i>79</i>&nbsp;
+<i>80</i>&nbsp;    private String generateReply(String data,String filename,String index) {
+<b class="fc"><i>81</i>&nbsp;        StringBuilder result = new StringBuilder();</b>
+<b class="fc"><i>82</i>&nbsp;        System.out.print(result.toString()+&quot;\r&quot;);</b>
+<b class="fc"><i>83</i>&nbsp;        String title = &quot;[{\&quot;name\&quot;:\&quot;&quot; + filename + &quot;\&quot;,\&quot;index\&quot;:&quot; + index +&quot;,\&quot;status\&quot;:1,\&quot;order\&quot;:\&quot;0\&quot;,\&quot;celldata\&quot;:[&quot;;</b>
+<b class="fc"><i>84</i>&nbsp;        return title + data +&quot;]}]&quot;;</b>
+<i>85</i>&nbsp;    }
+<i>86</i>&nbsp;
+<i>87</i>&nbsp;}
+</div>
+</div>
+
+<div class="footer">
+    
+    <div style="float:right;">generated on 2021-07-17 16:01</div>
+</div>
+</body>
+</html>
