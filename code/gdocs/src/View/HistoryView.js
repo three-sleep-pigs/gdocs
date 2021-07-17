@@ -100,7 +100,9 @@ class HistoryView extends React.Component{
                                             <div className="col-md-3 themed-grid-col">{item.edittime}</div>
                                             <div className="col-md-3 themed-grid-col">{item.operation}</div>
                                             <div className="col-md-3 themed-grid-col">
-                                                <button type="button" className="btn btn-info btn-sm" onClick={()=>this.rollback(item.id)}>查看</button>
+                                                <Link to={{pathname:"/excel",state:{id:item.fileid,filename:"",version:item.version,edit:item.id}}} className="col-md-4 themed-grid-col">
+                                                    <button type="button" className="btn btn-info btn-sm" >查看</button>
+                                                </Link>
                                                 <button type="button" className="btn btn-link btn-sm" onClick={()=>this.rollback(item.id)}>回滚</button>
                                             </div>
                                         </div>

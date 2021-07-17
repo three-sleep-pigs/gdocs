@@ -5,6 +5,7 @@ class Luckysheet extends React.Component {
         console.log(this.props.id)
         console.log(this.props.filename)
         console.log(this.props.version)
+        console.log(this.props.edit)
         console.log(localStorage.getItem("username"))
     }
     componentDidMount() {
@@ -19,7 +20,7 @@ class Luckysheet extends React.Component {
             allowUpdate:true,
             myFolderUrl: "/menu",
             userInfo: '<i style="font-size:16px;color:#ff6a00;" class="fa fa-user-circle" aria-hidden="true">' + localStorage.getItem('username') + '</i>',
-            loadUrl: "http://localhost:8888/publicApi/excel/downData?id="+this.props.id+"&version="+this.props.version,
+            loadUrl: "http://localhost:8888/publicApi/excel/downData?id="+this.props.id+"&version="+this.props.version+"&edit="+this.props.edit,
             updateUrl: socket_url,
             // hook:{
             //     updated:function(e){
