@@ -12,9 +12,13 @@
 
 ## Distributed File System
 
-*Distributed File System test* 通过 go test 进行测试。
+### Single-Master
+
+*Single-Master Distributed File System test* 通过 go test 进行测试。
 
 测试文件见`/code/src/gfs/test/graybox_test.go`
+
+#### 1. correctness test
 
 *correctness test* 详情见测试文件中以`Test` 开头函数。
 测试的具体内容如下所示，正确性测试全部通过。
@@ -68,7 +72,7 @@
   + check consistency after reastarting a master
   + check consistency after reastarting a chunk server![](./photos/persistent.png)
 
-### 2. performance test
+#### 2. performance test
 
 *performance test* 通过 go Benchmark 进行测试。详情见测试文件中以`Benchmark` 开头函数。
 测试环境为
@@ -81,14 +85,53 @@
   测试中每次读的长度大小为一个*chunk*长度
   ![read test result](./photos/readper.png)
   约为0.006s/op
+
 * **write**
   测试中每次写的长度大小为一个*chunk*长度
   ![write test result](./photos/writeper.png)
   约为0.114s/op
+
 * **append**
   测试中每次*append*的长度大小为一个*chunk*长度
   ![append test result](./photos/appendper.png)
   约为0.112s/op
   
-  ### 3. defects and corresponding improvement methods
+  #### 3. defects and corresponding improvement methods
+
 * **snapshot**
+  
+  除了基本的文件接口和加入的 append 外，client API 可以考虑加入 snapshot，用来快速复制文件，snapshot 应只新建新的 metadata，不需要新建新的 chunk，新建的metadata 与之前的metadata 指向相同的 chunk，采用COW方法，只有其中一方改变文件才会新建对应chunk。
+  
+  snapshot 对于需要大量复制文件的应用非常友好，对于 naive gdocs来说，增加 snapshot API可以提高版本回滚的用户体验。
+
+* **master crash**
+  
+  *Single-Master DFS*  无法处理唯一的 master crash的问题，虽然可以通过与备份的 master 节点同步数据，记录log等方式保证一致性，但是却不能相应 client 请求，除非维护人员意识到 master 已经不在工作，重启新的master并通知对应的 chunk server 和 client，才能使系统恢复工作。
+  
+  对于这个问题我们组考虑的解决办法是使用 zookeeper 设计 *Multi-Master DFS* ；也可以增加一个新的 view 节点，实时检测 master 的存活情况，并作出相应措施，但是这样view 节点的存活问题就会成为新的技术难点。s
+
+### Multi-Master
+
+*Multi-Master Distributed File System test* 通过 go test 进行测试。
+
+测试文件见`/code/src/gfs/test/graybox_test.go`
+
+#### 1. correctness test
+
+*correctness test* 详情见测试文件中以`Test` 开头函数。
+测试的具体内容如下所示，正确性测试全部通过。
+
+![](./photos/multitest.png)
+
+#### 2. performance test
+
+由于 *Multi-Master* 的设计有许多 spin lock，而且获得元数据需要跟 zookeeper 进行交互，所以导致性能不佳，非常遗憾，与 *Single-Master* 相同的性能测试在 *Multi-Master* 上没有测出有用结果。
+
+#### 3.  defects and corresponding improvement methods
+
++ **cache**
+  
+  由于 *Multi-Master DFS* 性能不加，主要原因有每次读取元数据都需要与 zookeeper 进行交互的原因，可以考虑在每个 master 节点增加 cache，但是这样会引入一致性的问题。
++ **Read-Write lock**
+  
+  通过 zookeeper 提供的接口，设计读写锁，替换掉项目中对应的 spin lock 来提高性能。
