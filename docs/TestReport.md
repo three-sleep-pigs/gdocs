@@ -11,8 +11,19 @@
 测试文件见`/code/gdocsbackend/src/test/java/com/gdocs/backend`目录下3个`$ControllerTest.java`文件，测试的接口如下所示，正确性测试全部通过。
 * **LoginControllerTest**
 
-### 2. performance test
+  ![](./photos/logintest.png)
+* **FileControllerTest**
 
+  ![](./photos/filetest.png)
+* **EditControllerTest**
+
+  ![](./photos/edittest.png)
+
+### 2. Test Coverage
+* **Controller**
+  ![](./photos/controllercoverage.png)
+* **Service**
+  ![](./photos/servicecoverage.png)
 ### 3. defects and corresponding improvement methods
 
 ## Distributed File System
