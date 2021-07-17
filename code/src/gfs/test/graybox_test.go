@@ -5,11 +5,9 @@ import (
 	"../chunkserver"
 	"../client"
 	"../master"
-	"fmt"
 	"math/rand"
 	"os"
 	"reflect"
-	"sync"
 	"testing"
 	"time"
 )
@@ -36,7 +34,7 @@ func getCAddrs() []string {
 }
 
 func getRemoveDirs() []string {
-	return []string{"../csroot1", "../csroot2", "../csroot3"}
+	return []string{"../csroot1", "../csroot2", "../csroot3", "../csroot4", "../csroot5"}
 }
 
 func RunClient() []*client.Client {
@@ -50,7 +48,7 @@ func RunClient() []*client.Client {
 }
 
 func RunMaster() []*master.Master {
-	msAddrs := getMsAddrs()
+	msAddrs := gfs.Masters
 	var ms = make([]*master.Master, 0)
 	for i := 0; i < csNum; i++ {
 		m := master.NewAndServe(msAddrs[i])
@@ -409,282 +407,35 @@ func TestWriteReadBigData(t *testing.T) {
  *  TEST SUITE 4 - Fault Tolerance
  */
 // Shutdown primary chunk server during appending
-func TestShutdownPrimary(t *testing.T) {
-	if c == nil {
-		t.Fatalf("start a client fail")
-	}
-	println("GFS FILES CLEAN")
-	gfsClean()
-	println("DEBUG FILES CLEAN")
-	CleanDebugFiles()
-	gfsRun()
-	println("GFS START")
-	time.Sleep(time.Duration(5) * time.Second)
-
-	p := "/shutdown.txt"
-	ch := make(chan error, N+3)
-
-	ch <- c.Create(p)
-
-	expected := make(map[int][]byte)
-	toDelete := make(map[int][]byte)
-	for i := 0; i < N; i++ {
-		expected[i] = []byte(fmt.Sprintf("%2d", i))
-		toDelete[i] = []byte(fmt.Sprintf("%2d", i))
-	}
-
-	// get two replica locations
-	var r1 gfs.GetChunkHandleReply
-	ch <- m.RPCGetChunkHandle(gfs.GetChunkHandleArg{Path: p, Index: 0}, &r1)
-	var l gfs.GetReplicasReply
-	ch <- m.RPCGetReplicas(gfs.GetReplicasArg{Handle: r1.Handle}, &l)
-
-	for i := 0; i < N; i++ {
-		go func(x int) {
-			_, err := c.Append(p, expected[x])
-			ch <- err
-		}(i)
-	}
-	time.Sleep(time.Duration(1) * time.Second)
-	// choose primary server to shutdown during appending
-	for i, v := range cs {
-		if csAdd[i] == l.Primary {
-			v.Shutdown()
-		}
-	}
-
-	errorAll(ch, N+3, t)
-	time.Sleep(time.Duration(5) * time.Second)
-
-	// check correctness, append at least once
-	for x := 0; x < gfs.MaxChunkSize/2 && len(toDelete) > 0; x++ {
-		buf := make([]byte, 2)
-		n, err := c.Read(p, int64(x*2), buf)
-		if err != nil {
-			t.Error("read error ", err)
-		}
-		if n != 2 {
-			t.Error("should read exactly 2 bytes but", n, "instead")
-		}
-
-		key := -1
-		for k, v := range expected {
-			if reflect.DeepEqual(buf, v) {
-				key = k
-				break
-			}
-		}
-		if key == -1 {
-			t.Error("incorrect data", buf)
-		} else {
-			delete(toDelete, key)
-		}
-	}
-	if len(toDelete) != 0 {
-		t.Errorf("missing data %v", toDelete)
-	}
-
-	time.Sleep(time.Duration(5) * time.Second)
-	println("GFS SHUTDOWN")
-	gfsShutDown()
-}
-// Shutdown replica chunk server during appending
-func TestShutdownReplica(t *testing.T) {
-	if c == nil {
-		t.Fatalf("start a client fail")
-	}
-	println("GFS FILES CLEAN")
-	gfsClean()
-	println("DEBUG FILES CLEAN")
-	CleanDebugFiles()
-	gfsRun()
-	println("GFS START")
-	time.Sleep(time.Duration(5) * time.Second)
-
-	p := "/shutdown.txt"
-	ch := make(chan error, N+3)
-
-	ch <- c.Create(p)
-
-	expected := make(map[int][]byte)
-	toDelete := make(map[int][]byte)
-	for i := 0; i < N; i++ {
-		expected[i] = []byte(fmt.Sprintf("%2d", i))
-		toDelete[i] = []byte(fmt.Sprintf("%2d", i))
-	}
-
-	// get two replica locations
-	var r1 gfs.GetChunkHandleReply
-	ch <- m.RPCGetChunkHandle(gfs.GetChunkHandleArg{Path: p, Index: 0}, &r1)
-	var l gfs.GetReplicasReply
-	ch <- m.RPCGetReplicas(gfs.GetReplicasArg{Handle: r1.Handle}, &l)
-
-	for i := 0; i < N; i++ {
-		go func(x int) {
-			_, err := c.Append(p, expected[x])
-			ch <- err
-		}(i)
-	}
-	time.Sleep(time.Duration(1) * time.Second)
-	// choose primary server to shutdown during appending
-	for i, v := range cs {
-		if csAdd[i] == l.Secondaries[0] {
-			v.Shutdown()
-		}
-	}
-
-	errorAll(ch, N+3, t)
-	time.Sleep(time.Duration(5) * time.Second)
-
-	// check correctness, append at least once
-	for x := 0; x < gfs.MaxChunkSize/2 && len(toDelete) > 0; x++ {
-		buf := make([]byte, 2)
-		n, err := c.Read(p, int64(x*2), buf)
-		if err != nil {
-			t.Error("read error ", err)
-		}
-		if n != 2 {
-			t.Error("should read exactly 2 bytes but", n, "instead")
-		}
-
-		key := -1
-		for k, v := range expected {
-			if reflect.DeepEqual(buf, v) {
-				key = k
-				break
-			}
-		}
-		if key == -1 {
-			t.Error("incorrect data", buf)
-		} else {
-			delete(toDelete, key)
-		}
-	}
-	if len(toDelete) != 0 {
-		t.Errorf("missing data %v", toDelete)
-	}
-
-	time.Sleep(time.Duration(5) * time.Second)
-	println("GFS SHUTDOWN")
-	gfsShutDown()
-}
-
-/*
- *  TEST SUITE 5 - Persistent Tests
- */
-func TestPersistent(t *testing.T) {
-	if c == nil {
-		t.Fatalf("start a client fail")
-	}
-	println("GFS FILES CLEAN")
-	gfsClean()
-	println("DEBUG FILES CLEAN")
-	CleanDebugFiles()
-	gfsRun()
-	println("GFS START")
-	time.Sleep(time.Duration(5) * time.Second)
-
-	err := c.Create("/persistent.txt")
+func TestShutdownMaster(t *testing.T) {
+	r := rand.Int()
+	m1 := m[r % msNum]
+	c1 := c[r % msNum]
+	err := c1.Create("/testShutdownMaster.txt")
 	if err != nil {
 		t.Error(err)
 	}
-	writeBuf := make([]byte, 26)
-	for i := 0; i < 26; i++ {
-		writeBuf[i] = byte(i%26 + 'a')
+
+	bound := gfs.MaxAppendSize - 1
+	buf := make([]byte, bound)
+	for i := 0; i < bound; i++ {
+		buf[i] = byte(i%26 + 'a')
 	}
-	_, err = c.Write("/persistent.txt", 0, writeBuf)
+
+	_, err = c1.Append("/testShutdownMaster.txt", buf)
 	if err != nil {
 		t.Error(err)
 	}
-	readBuf := make([]byte, 26)
-	_, err = c.Read("/persistent.txt", 0, readBuf)
+	// shut down a random master
+	m1.Shutdown()
+
+	bufR := make([]byte, bound)
+	var n int64
+	n, err = c1.Read("/testShutdownMaster.txt", 0, bufR)
 	if err != nil {
 		t.Error(err)
 	}
-	if !reflect.DeepEqual(writeBuf, readBuf) {
-		t.Error("read wrong data before shut down")
+	if n != int64(bound) {
+		t.Error("read byte error")
 	}
-	time.Sleep(time.Duration(5) * time.Second)
-
-	println("GFS SHUTDOWN")
-	gfsShutDown()
-	time.Sleep(time.Duration(5) * time.Second)
-
-	gfsRun()
-	println("GFS START AGAIN")
-	time.Sleep(time.Duration(5) * time.Second)
-
-	_, err = c.Read("/persistent.txt", 0, readBuf)
-	if err != nil {
-		t.Error(err)
-	}
-	if !reflect.DeepEqual(writeBuf, readBuf) {
-		t.Error("read wrong data after shut down")
-	}
-	time.Sleep(time.Duration(5) * time.Second)
-
-	println("GFS SHUTDOWN")
-	gfsShutDown()
-}
-
-/*
- *  TEST SUITE - Performance Test
- */
-func BenchmarkCreate(b *testing.B) {
-	println("GFS FILES CLEAN")
-	gfsClean()
-	if c == nil {
-		c = RunClient()
-	}
-	gfsRun()
-	println("GFS START")
-	time.Sleep(time.Duration(5) * time.Second)
-	b.ResetTimer()
-	var wg sync.WaitGroup
-	n := b.N
-	wg.Add(n)
-	for i := 0; i < n; i++ {
-		go func (i int) {
-			err := c.Create(fmt.Sprintf("test%d.txt", i))
-			if err != nil {
-				println(fmt.Sprintf("Create file <test%d.txt> failed <%s>", i, err))
-			}
-			wg.Done()
-		}(i)
-	}
-	wg.Wait()
-	println("GFS SHUTDOWN")
-	gfsShutDown()
-}
-
-func BenchmarkCreateThenDelete(b *testing.B) {
-	c = RunClient()
-	if c == nil {
-		b.Fatalf("start a client fail")
-	}
-	gfsRun()
-	println("GFS START")
-	time.Sleep(time.Duration(5) * time.Second)
-	var wg sync.WaitGroup
-	n := b.N
-	wg.Add(b.N)
-	for i := 0; i < n; i++ {
-		go func (i int) {
-			c.Create(fmt.Sprintf("test%d.txt", i))
-			wg.Done()
-		}(i)
-	}
-	wg.Wait()
-	wg.Add(b.N)
-	for i := 0; i < n; i++ {
-		go func (i int) {
-			c.Delete(fmt.Sprintf("test%d.txt", i))
-			wg.Done()
-		}(i)
-	}
-	wg.Wait()
-	println("GFS SHUTDOWN")
-	gfsShutDown()
-	println("GFS FILES CLEAN")
-	gfsClean()
 }
