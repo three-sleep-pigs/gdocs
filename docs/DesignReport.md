@@ -4,6 +4,24 @@
 
 ## Naive gDocs
 
+### 1. Introduction
+
++ 文档格式：sheets
+
++ 基本功能
+  + 用户登录注册
+  + 浏览文件列表
+  + 多用户同步编辑Excel文件
+  + 浏览回收站
+  + 删除与恢复文件
++ 进阶功能
+  + 浏览编辑记录
+  + 回滚文件至历史版本
++ 技术实现
+  + 前端：js+react框架，luckysheet插件实现excel格式共享文档
+  + 后端：java+springboot框架+MySQL数据库+DFS
+  + 前后端通过ajax请求和websocket通信
+
 ## Distributed File System
 
 ### 1. System Architecture
