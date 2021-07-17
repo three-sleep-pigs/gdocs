@@ -199,7 +199,7 @@ func TestRenameFile(t *testing.T) {
 	gfsShutDown()
 }
 
-func TestFileNameSpaceConcurrently(t *testing.T) {
+func TestCreateAndDeleteConcurrently(t *testing.T) {
 	println("GFS FILES CLEAN")
 	gfsClean()
 	println("GFS START")
@@ -388,6 +388,7 @@ func TestGetFileInfo(t *testing.T) {
 // if the append would cause the chunk to exceed the maximum size
 // this chunk should be pad and the data should be appended to the next chunk
 func TestPadOver(t *testing.T) {
+	c = RunClient()
 	if c == nil {
 		t.Fatalf("start a client fail")
 	}
@@ -433,6 +434,7 @@ func TestPadOver(t *testing.T) {
 
 // big data that invokes several chunks
 func TestWriteReadBigData(t *testing.T) {
+	c = RunClient()
 	if c == nil {
 		t.Fatalf("start a client fail")
 	}
@@ -497,6 +499,8 @@ func TestWriteReadBigData(t *testing.T) {
 
 // a concurrent producer-consumer number collector for testing race contiditon
 func TestConcurrentReadAndAppend(t *testing.T) {
+	c = RunClient()
+
 	if c == nil {
 		t.Fatalf("start a client fail")
 	}
@@ -567,6 +571,7 @@ func TestConcurrentReadAndAppend(t *testing.T) {
  */
 // Shutdown primary chunk server during appending
 func TestShutdownPrimary(t *testing.T) {
+	c = RunClient()
 	if c == nil {
 		t.Fatalf("start a client fail")
 	}
@@ -647,6 +652,7 @@ func TestShutdownPrimary(t *testing.T) {
 }
 // Shutdown replica chunk server during appending
 func TestShutdownReplica(t *testing.T) {
+	c = RunClient()
 	if c == nil {
 		t.Fatalf("start a client fail")
 	}
@@ -727,9 +733,10 @@ func TestShutdownReplica(t *testing.T) {
 }
 
 /*
- *  TEST SUITE 5 - Persistent Tests
- */
+*  TEST SUITE 5 - Persistent Tests
+*/
 func TestPersistent(t *testing.T) {
+	c = RunClient()
 	if c == nil {
 		t.Fatalf("start a client fail")
 	}
@@ -785,9 +792,9 @@ func TestPersistent(t *testing.T) {
 }
 
 /*
- *  TEST SUITE - Performance Test
- */
-func BenchmarkCreate(b *testing.B) {
+*  TEST SUITE 6 - Performance Tests
+*/
+func BenchmarkWrite(b *testing.B) {
 	println("GFS FILES CLEAN")
 	gfsClean()
 	if c == nil {
@@ -796,11 +803,9 @@ func BenchmarkCreate(b *testing.B) {
 	gfsRun()
 	println("GFS START")
 	time.Sleep(time.Duration(5) * time.Second)
-	b.ResetTimer()
 	var wg sync.WaitGroup
-	n := b.N
-	wg.Add(n)
-	for i := 0; i < n; i++ {
+	wg.Add(N)
+	for i := 0; i < N; i++ {
 		go func (i int) {
 			err := c.Create(fmt.Sprintf("test%d.txt", i))
 			if err != nil {
@@ -810,38 +815,110 @@ func BenchmarkCreate(b *testing.B) {
 		}(i)
 	}
 	wg.Wait()
+	bound := gfs.MaxAppendSize - 1
+	buf := make([]byte, bound)
+	for i := 0; i < bound; i++ {
+		buf[i] = byte(i%26 + 'a')
+	}
+	b.ResetTimer()
+	n := b.N
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func (i int) {
+			c.Write(fmt.Sprintf("test%d.txt", i%N), 0, buf)
+			wg.Done()
+		}(i)
+	}
+	wg.Wait()
 	println("GFS SHUTDOWN")
 	gfsShutDown()
 }
 
-func BenchmarkCreateThenDelete(b *testing.B) {
-	c = RunClient()
+func BenchmarkAppend(b *testing.B) {
+	println("GFS FILES CLEAN")
+	gfsClean()
 	if c == nil {
-		b.Fatalf("start a client fail")
+		c = RunClient()
 	}
 	gfsRun()
 	println("GFS START")
 	time.Sleep(time.Duration(5) * time.Second)
 	var wg sync.WaitGroup
-	n := b.N
-	wg.Add(b.N)
-	for i := 0; i < n; i++ {
+	wg.Add(N)
+	for i := 0; i < N; i++ {
 		go func (i int) {
-			c.Create(fmt.Sprintf("test%d.txt", i))
+			err := c.Create(fmt.Sprintf("test%d.txt", i))
+			if err != nil {
+				println(fmt.Sprintf("Create file <test%d.txt> failed <%s>", i, err))
+			}
 			wg.Done()
 		}(i)
 	}
 	wg.Wait()
-	wg.Add(b.N)
+	bound := gfs.MaxAppendSize - 1
+	buf := make([]byte, bound)
+	for i := 0; i < bound; i++ {
+		buf[i] = byte(i%26 + 'a')
+	}
+	b.ResetTimer()
+	n := b.N
+	wg.Add(n)
 	for i := 0; i < n; i++ {
 		go func (i int) {
-			c.Delete(fmt.Sprintf("test%d.txt", i))
+			c.Append(fmt.Sprintf("test%d.txt", i%N), buf)
 			wg.Done()
 		}(i)
 	}
 	wg.Wait()
 	println("GFS SHUTDOWN")
 	gfsShutDown()
+}
+
+func BenchmarkRead(b *testing.B) {
 	println("GFS FILES CLEAN")
 	gfsClean()
+	if c == nil {
+		c = RunClient()
+	}
+	gfsRun()
+	println("GFS START")
+	time.Sleep(time.Duration(5) * time.Second)
+	var wg sync.WaitGroup
+	wg.Add(N)
+	for i := 0; i < N; i++ {
+		go func (i int) {
+			err := c.Create(fmt.Sprintf("test%d.txt", i))
+			if err != nil {
+				println(fmt.Sprintf("Create file <test%d.txt> failed <%s>", i, err))
+			}
+			wg.Done()
+		}(i)
+	}
+	wg.Wait()
+	bound := gfs.MaxAppendSize - 1
+	buf := make([]byte, bound)
+	for i := 0; i < bound; i++ {
+		buf[i] = byte(i%26 + 'a')
+	}
+	wg.Add(N)
+	for i := 0; i < N; i++ {
+		go func (i int) {
+			c.Append(fmt.Sprintf("test%d.txt", N), buf)
+			wg.Done()
+		}(i)
+	}
+	wg.Wait()
+	buf = make([]byte, bound)
+	b.ResetTimer()
+	n := b.N
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func (i int) {
+			c.Read(fmt.Sprintf("test%d.txt", i%N), 0, buf)
+			wg.Done()
+		}(i)
+	}
+	wg.Wait()
+	println("GFS SHUTDOWN")
+	gfsShutDown()
 }
