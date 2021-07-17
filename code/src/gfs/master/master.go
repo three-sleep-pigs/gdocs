@@ -18,6 +18,7 @@ type Master struct {
 	address    string // master server address
 	l          net.Listener
 	zk         *zk.Conn
+	shutdown	chan struct{}
 }
 
 type FileMetadata struct {
@@ -47,6 +48,7 @@ type ChunkServerInfo struct {
 func NewAndServe(address string) *Master {
 	m := &Master{
 		address:    address,
+		shutdown:  make(chan struct{}),
 	}
 	gfs.DebugMsgToFile("new a master", gfs.MASTER, m.address)
 
@@ -83,6 +85,11 @@ func NewAndServe(address string) *Master {
 	// handle rpc
 	go func() {
 		for {
+			select {
+			case <- m.shutdown:
+				return
+			default:
+			}
 			conn, err := m.l.Accept()
 			if err == nil {
 				go func() {
@@ -99,15 +106,25 @@ func NewAndServe(address string) *Master {
 	go func() {
 		serverCheckTicker := time.Tick(gfs.ServerCheckInterval)
 		for {
-			<-serverCheckTicker
-			err := m.serverCheck()
-			if err != nil {
-				gfs.DebugMsgToFile(fmt.Sprintf("serverCheck error <%s>", err), gfs.MASTER, m.address)
+			select {
+			case <- m.shutdown:
+				return
+			case <-serverCheckTicker:
+				{
+					err := m.serverCheck()
+					if err != nil {
+						gfs.DebugMsgToFile(fmt.Sprintf("serverCheck error <%s>", err), gfs.MASTER, m.address)
+					}
+				}
 			}
 		}
 	}()
 	gfs.DebugMsgToFile("master start to serve", gfs.MASTER, m.address)
 	return m
+}
+
+func (m *Master) Shutdown() {
+	close(m.shutdown)
 }
 
 // serverCheck checks chunkServer
