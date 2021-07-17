@@ -22,31 +22,31 @@ const (
 	ChunkMetaDataPrefix = "ChunkMeta"
 	FileMetaDataPrefix = "FileMeta"
 	ChunkServerInfoPrefix = "ChunkServerInfo"
-	ReplicaNeedList = "ReplicaNeedList"
-	ReplicaNeedListLock = "LockReplicaNeedList"
-	NextHandle = "NextHandle"
-	ChunkMetaKeyList = "ChunkMetaKey"
-	FileMetaKeyList = "FileMetaKey"
-	ChunkServerKeyList = "ChunkServerKey"
-	ServerCheckLock = "LockServerCheck"
+	ReplicaNeedList = "/ReplicaNeedList"
+	ReplicaNeedListLock = "/LockReplicaNeedList"
+	NextHandle = "/NextHandle"
+	ChunkMetaKeyList = "/ChunkMetaKey"
+	FileMetaKeyList = "/FileMetaKey"
+	ChunkServerKeyList = "/ChunkServerKey"
+	ServerCheckLock = "/LockServerCheck"
 )
 
 func GetKey(Key string, Type int) string {
 	switch Type {
 	case CHUNKSERVERLOCK:
-		return LockPrefix + ChunkServerInfoPrefix + Key
+		return "/" + LockPrefix + ChunkServerInfoPrefix + Key
 	case CHUNKSERVER:
-		return ChunkServerInfoPrefix + Key
+		return "/" + ChunkServerInfoPrefix + Key
 	case CHUNKMETADATALOCK:
-		return LockPrefix + ChunkMetaDataPrefix + Key
+		return "/" + LockPrefix + ChunkMetaDataPrefix + Key
 	case CHUNKMETADATA:
-		return ChunkMetaDataPrefix + Key
+		return "/" + ChunkMetaDataPrefix + Key
 	case FILEMETADATALOCK:
-		return LockPrefix + FileMetaDataPrefix + Key
+		return "/" + LockPrefix + FileMetaDataPrefix + Key
 	case FILEMETADATA:
-		return FileMetaDataPrefix + Key
+		return "/" + FileMetaDataPrefix + Key
 	default:
-		return Key
+		return "/" + Key
 	}
 }
 
@@ -179,7 +179,7 @@ func Remove(conn *zk.Conn, key string) {
 func SetIfAbsentInMap(conn *zk.Conn, key string, value interface{}, Type int) bool {
 	acls := zk.WorldACL(zk.PermAll)
 	data, _ := json.Marshal(value)
-	_, err := conn.Create(key, data, 0, acls)
+	_, err := conn.Create(GetKey(key, Type), data, 0, acls)
 	if err != nil {
 		return false
 	}
@@ -222,7 +222,7 @@ func SetIfAbsentInMap(conn *zk.Conn, key string, value interface{}, Type int) bo
 func SetInMap(conn *zk.Conn, key string, value interface{}, Type int) error {
 	acls := zk.WorldACL(zk.PermAll)
 	data, _ := json.Marshal(value)
-	_, err := conn.Create(key, data, 0, acls)
+	_, err := conn.Create(GetKey(key, Type), data, 0, acls)
 	if err == nil {
 		var keyList string
 		switch Type {
@@ -257,11 +257,11 @@ func SetInMap(conn *zk.Conn, key string, value interface{}, Type int) error {
 	}
 	// assume that key exists in the related key list stored in zookeeper
 	for {
-		_, sate, e := conn.Get(key)
+		_, sate, e := conn.Get(GetKey(key, Type))
 		if e != nil {
 			return e
 		}
-		_, er := conn.Set(key, data, sate.Version)
+		_, er := conn.Set(GetKey(key, Type), data, sate.Version)
 		if er == nil {
 			return nil
 		}
@@ -270,11 +270,11 @@ func SetInMap(conn *zk.Conn, key string, value interface{}, Type int) error {
 
 func RemoveInMap(conn *zk.Conn, key string, Type int) {
 	for {
-		_, sate, e := conn.Get(key)
+		_, sate, e := conn.Get(GetKey(key, Type))
 		if e != nil {
 			return
 		}
-		err := conn.Delete(key, sate.Version)
+		err := conn.Delete(GetKey(key, Type), sate.Version)
 		if err == nil {
 			var keyList string
 			switch Type {

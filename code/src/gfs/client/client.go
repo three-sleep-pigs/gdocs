@@ -28,8 +28,6 @@ func NewClient(addr string) *Client {
 	go func() {
 		http.HandleFunc("/create", c.CreateHandler)
 		http.HandleFunc("/delete", c.DeleteHandler)
-		http.HandleFunc("/rename", c.RenameHandler)
-		http.HandleFunc("/mkdir", c.MkdirHandler)
 		http.HandleFunc("/read", c.ReadHandler)
 		http.HandleFunc("/write", c.WriteHandler)
 		http.HandleFunc("/append", c.AppendHandler)
@@ -39,10 +37,6 @@ func NewClient(addr string) *Client {
 	}()
 
 	return c
-}
-
-func (c *Client) Shutdown() {
-
 }
 
 func (c *Client) CreateHandler(w http.ResponseWriter, r *http.Request) {
@@ -93,66 +87,6 @@ func (c *Client) DeleteHandler(w http.ResponseWriter, r *http.Request) {
 	err = c.Delete(request.Path)
 	if err != nil {
 		fmt.Printf("[client]delete file %s error: %v\n", request.Path, err)
-		response.Success = false
-		response.Error = err.Error()
-		res, _ := json.Marshal(response)
-		fmt.Fprintf(w, string(res))
-		return
-	}
-	response.Success = true
-	response.Error = ""
-	res, _ := json.Marshal(response)
-	fmt.Fprintf(w, string(res))
-}
-
-func (c *Client) RenameHandler(w http.ResponseWriter, r *http.Request) {
-	var request RenameRequest
-	var response RenameResponse
-	body, _ := ioutil.ReadAll(r.Body)
-	err := json.Unmarshal(body, &request)
-
-	if err != nil {
-		fmt.Printf("[client]rename parameter error: %s\n", body)
-		response.Success = false
-		response.Error = "wrong parameter"
-		res, _ := json.Marshal(response)
-		fmt.Fprintf(w, string(res))
-		return
-	}
-
-	err = c.Rename(request.Source, request.Target)
-	if err != nil {
-		fmt.Printf("[client]rename file %s to %s error: %v\n", request.Source, request.Target, err)
-		response.Success = false
-		response.Error = err.Error()
-		res, _ := json.Marshal(response)
-		fmt.Fprintf(w, string(res))
-		return
-	}
-	response.Success = true
-	response.Error = ""
-	res, _ := json.Marshal(response)
-	fmt.Fprintf(w, string(res))
-}
-
-func (c *Client) MkdirHandler(w http.ResponseWriter, r *http.Request) {
-	var request MkdirRequest
-	var response MkdirResponse
-	body, _ := ioutil.ReadAll(r.Body)
-	err := json.Unmarshal(body, &request)
-
-	if err != nil {
-		fmt.Printf("[client]mkdir parameter error: %s\n", body)
-		response.Success = false
-		response.Error = "wrong parameter"
-		res, _ := json.Marshal(response)
-		fmt.Fprintf(w, string(res))
-		return
-	}
-
-	err = c.Mkdir(request.Path)
-	if err != nil {
-		fmt.Printf("[client]make directory %s error: %v\n", request.Path, err)
 		response.Success = false
 		response.Error = err.Error()
 		res, _ := json.Marshal(response)
@@ -288,32 +222,6 @@ func (c *Client) Delete(path string) error {
 	err := gfs.CallMaster("Master.RPCDeleteFile", gfs.DeleteFileArg{Path: path}, &reply)
 	if err != nil {
 		gfs.DebugMsgToFile(fmt.Sprintf("delete file <%s> error <%s>", path, err), gfs.CLIENT, c.identifier)
-		return err
-	}
-	return nil
-}
-
-// Rename is a client API, deletes a file
-func (c *Client) Rename(source string, target string) error {
-	gfs.DebugMsgToFile(fmt.Sprintf("rename file <%s> to file <%s>", source, target), gfs.CLIENT, c.identifier)
-	defer gfs.DebugMsgToFile(fmt.Sprintf("rename file <%s> to file <%s> end", source, target), gfs.CLIENT, c.identifier)
-	var reply gfs.RenameFileReply
-	err := gfs.CallMaster("Master.RPCRenameFile", gfs.RenameFileArg{Source: source, Target: target}, &reply)
-	if err != nil {
-		gfs.DebugMsgToFile(fmt.Sprintf("rename file <%s> to file <%s> error <%s>", source, target, err), gfs.CLIENT, c.identifier)
-		return err
-	}
-	return nil
-}
-
-// Mkdir is a client API, makes a directory
-func (c *Client) Mkdir(path string) error {
-	gfs.DebugMsgToFile(fmt.Sprintf("create directory <%s>", path), gfs.CLIENT, c.identifier)
-	defer gfs.DebugMsgToFile(fmt.Sprintf("create directory <%s> end", path), gfs.CLIENT, c.identifier)
-	var reply gfs.MkdirReply
-	err := gfs.CallMaster("Master.RPCMkdir", gfs.MkdirArg{Path: path}, &reply)
-	if err != nil {
-		gfs.DebugMsgToFile(fmt.Sprintf("create directory <%s> error <%s>", path, err), gfs.CLIENT, c.identifier)
 		return err
 	}
 	return nil

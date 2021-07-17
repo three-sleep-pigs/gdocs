@@ -2,7 +2,6 @@ package gfs
 
 import (
 	"os"
-	"syscall"
 	"time"
 )
 
@@ -68,8 +67,8 @@ func DebugMsgToFile(msg string, t TYPE, description string) {
 	}
 	defer file.Close()
 	// use file lock to support concurrent write
-	syscall.Flock(int(file.Fd()), syscall.LOCK_EX)
-	defer syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+	//syscall.Flock(int(file.Fd()), syscall.LOCK_EX)
+	//defer syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
 
 	file.WriteString(toWrite)
 }
@@ -107,4 +106,4 @@ const (
 )
 
 // Masters the addr of masters
-var Masters = []string{"127.0.0.1:8080","127.0.0.1:8081","127.0.0.1:8082"}
+var Masters = []string{"127.0.0.1:6060","127.0.0.1:6061"}

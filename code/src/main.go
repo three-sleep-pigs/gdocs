@@ -10,15 +10,13 @@ import (
 	"os"
 )
 
-var ChunkServers = []string{"127.0.0.1:8083","127.0.0.1:8084","127.0.0.1:8085"}
-var Clients = []string{"127.0.0.1:8086","127.0.0.1:8087","127.0.0.1:8088"}
+var ChunkServers = []string{"127.0.0.1:8081", "127.0.0.1:8082", "127.0.0.1:8083", "127.0.0.1:8084", "127.0.0.1:8085"}
+var Clients = []string{"127.0.0.1:7070"}
 
 func main() {
-	var masters []*master.Master
 	var chunkservers []*chunkserver.ChunkServer
 	for _, addr := range gfs.Masters {
-		m := master.NewAndServe(addr)
-		masters = append(masters, m)
+		master.NewAndServe(addr)
 	}
 	for index, addr := range ChunkServers {
 		cs := chunkserver.NewChunkServer(addr, fmt.Sprintf("./chunk%d", index))

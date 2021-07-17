@@ -15,7 +15,7 @@ import (
 const (
 	msNum = 2	// master num
 	csNum = 5	// chunk server num
-	cNum = 2	// client num
+	cNum = 1	// client num
 	N = 100
 )
 
@@ -30,7 +30,7 @@ func getCsRoots() []string {
 
 // get client addrs for test
 func getCAddrs() []string {
-	return []string{"127.0.0.1:7070", "127.0.0.1:7071"}
+	return []string{"127.0.0.1:7070"}
 }
 
 func getRemoveDirs() []string {
@@ -40,7 +40,7 @@ func getRemoveDirs() []string {
 func RunClient() []*client.Client {
 	cAddrs := getCAddrs()
 	var cs = make([]*client.Client, 0)
-	for i := 0; i < csNum; i++ {
+	for i := 0; i < cNum; i++ {
 		c := client.NewClient(cAddrs[i])
 		cs = append(cs, c)
 	}
@@ -50,7 +50,7 @@ func RunClient() []*client.Client {
 func RunMaster() []*master.Master {
 	msAddrs := gfs.Masters
 	var ms = make([]*master.Master, 0)
-	for i := 0; i < csNum; i++ {
+	for i := 0; i < msNum; i++ {
 		m := master.NewAndServe(msAddrs[i])
 		ms = append(ms, m)
 	}
@@ -136,7 +136,7 @@ func TestStart(t *testing.T)  {
 		}
 	}
 	// sleep for a fit time
-	time.Sleep(time.Duration(5) * time.Second)
+	time.Sleep(time.Duration(1) * time.Second)
 }
 
 /*
@@ -147,11 +147,11 @@ func TestCreateFile(t *testing.T) {
 	r := rand.Int()
 	m1 := m[r % msNum]
 	m2 := m[(r + 1) % msNum]
-	err := m1.RPCCreateFile(gfs.CreateFileArg{Path: "/test1.txt"}, &gfs.CreateFileReply{})
+	err := m1.RPCCreateFile(gfs.CreateFileArg{Path: "test1.txt"}, &gfs.CreateFileReply{})
 	if err != nil {
 		t.Error(err)
 	}
-	err = m2.RPCCreateFile(gfs.CreateFileArg{Path: "/test1.txt"}, &gfs.CreateFileReply{})
+	err = m2.RPCCreateFile(gfs.CreateFileArg{Path: "test1.txt"}, &gfs.CreateFileReply{})
 	if err == nil {
 		t.Error("the same file has been created twice")
 	}
@@ -162,29 +162,15 @@ func TestDeleteFiles(t *testing.T) {
 	m1 := m[r % msNum]
 	m2 := m[(r + 1) % msNum]
 	// delete files
-	err := m1.RPCDeleteFile(gfs.DeleteFileArg{Path: "/test1.txt"}, &gfs.DeleteFileReply{})
+	err := m1.RPCDeleteFile(gfs.DeleteFileArg{Path: "test1.txt"}, &gfs.DeleteFileReply{})
 	if err != nil {
 		t.Error(err)
 	}
 	//
-	err = m2.RPCCreateFile(gfs.CreateFileArg{Path: "/test1.txt"}, &gfs.CreateFileReply{})
+	err = m2.RPCCreateFile(gfs.CreateFileArg{Path: "test1.txt"}, &gfs.CreateFileReply{})
 	if err != nil {
 		t.Error(err)
 		t.Error("Delete file failed")
-	}
-}
-// mkdir in to different masters
-func TestMkdir(t *testing.T) {
-	r := rand.Int()
-	m1 := m[r % msNum]
-	m2 := m[(r + 1) % msNum]
-	err := m1.RPCMkdir(gfs.MkdirArg{Path: "/dir1"}, &gfs.MkdirReply{})
-	if err != nil {
-		t.Error(err)
-	}
-	err = m2.RPCMkdir(gfs.MkdirArg{Path: "/dir1"}, &gfs.MkdirReply{})
-	if err == nil {
-		t.Error("the same dir has been created twice")
 	}
 }
 
@@ -196,16 +182,16 @@ func TestRPCGetChunkHandle(t *testing.T) {
 	r := rand.Int()
 	m1 := m[r % msNum]
 	m2 := m[(r + 1) % msNum]
-	err := m1.RPCCreateFile(gfs.CreateFileArg{Path: "/testGetChunkHandle.txt"}, &gfs.CreateFileReply{})
+	err := m1.RPCCreateFile(gfs.CreateFileArg{Path: "testGetChunkHandle.txt"}, &gfs.CreateFileReply{})
 	if err != nil {
 		t.Error(err)
 	}
 	var r1, r2 gfs.GetChunkHandleReply
-	err = m1.RPCGetChunkHandle(gfs.GetChunkHandleArg{Path: "/testGetChunkHandle.txt", Index: 0}, &r1)
+	err = m1.RPCGetChunkHandle(gfs.GetChunkHandleArg{Path: "testGetChunkHandle.txt", Index: 0}, &r1)
 	if err != nil {
 		t.Error(err)
 	}
-	err = m2.RPCGetChunkHandle(gfs.GetChunkHandleArg{Path: "/testGetChunkHandle.txt", Index: 0}, &r1)
+	err = m2.RPCGetChunkHandle(gfs.GetChunkHandleArg{Path: "testGetChunkHandle.txt", Index: 0}, &r1)
 	if err != nil {
 		t.Error(err)
 	}
@@ -213,7 +199,7 @@ func TestRPCGetChunkHandle(t *testing.T) {
 		t.Errorf("got different handle: %v and %v", r1.Handle, r2.Handle)
 	}
 
-	err = m1.RPCGetChunkHandle(gfs.GetChunkHandleArg{Path: "/testGetChunkHandle.txt", Index: 2}, &r2)
+	err = m1.RPCGetChunkHandle(gfs.GetChunkHandleArg{Path: "testGetChunkHandle.txt", Index: 2}, &r2)
 	if err == nil {
 		t.Error("discontinuous chunk should not be created")
 	}
@@ -223,12 +209,12 @@ func TestGetReplicas(t *testing.T) {
 	r := rand.Int()
 	m1 := m[r % msNum]
 	m2 := m[(r + 1) % msNum]
-	err := m1.RPCCreateFile(gfs.CreateFileArg{Path: "/testGetReplicas.txt"}, &gfs.CreateFileReply{})
+	err := m1.RPCCreateFile(gfs.CreateFileArg{Path: "testGetReplicas.txt"}, &gfs.CreateFileReply{})
 	if err != nil {
 		t.Error(err)
 	}
 	var r1 gfs.GetChunkHandleReply
-	err = m2.RPCGetChunkHandle(gfs.GetChunkHandleArg{Path: "/testGetReplicas.txt", Index: 0}, &r1)
+	err = m2.RPCGetChunkHandle(gfs.GetChunkHandleArg{Path: "testGetReplicas.txt", Index: 0}, &r1)
 	if err != nil {
 		t.Error(err)
 	}
@@ -278,7 +264,7 @@ func checkReplicas(handle int64, length int64, t *testing.T) int {
 func TestReplicaEquality(t *testing.T) {
 	var r1 gfs.GetChunkHandleReply
 	var data [][]byte
-	p := "/TestWriteChunk.txt"
+	p := "TestWriteChunk.txt"
 	err := m[0].RPCCreateFile(gfs.CreateFileArg{Path: p}, &gfs.CreateFileReply{})
 	if err != nil {
 		t.Error(err)
@@ -291,18 +277,15 @@ func TestReplicaEquality(t *testing.T) {
 	if n != gfs.DefaultNumReplicas {
 		t.Error("expect", gfs.DefaultNumReplicas, "replicas, got only", len(data))
 	}
-	time.Sleep(time.Duration(5) * time.Second)
-	println("GFS SHUTDOWN")
-	gfsShutDown()
 }
 
 func TestGetFileInfo(t *testing.T) {
 	var r1 gfs.GetFileInfoReply
-	err := m[0].RPCCreateFile(gfs.CreateFileArg{Path: "/testGetFileInfo.txt"}, &gfs.CreateFileReply{})
+	err := m[0].RPCCreateFile(gfs.CreateFileArg{Path: "testGetFileInfo.txt"}, &gfs.CreateFileReply{})
 	if err != nil {
 		t.Error(err)
 	}
-	err = m[0].RPCGetFileInfo(gfs.GetFileInfoArg{Path: "/testGetFileInfo.txt"}, &r1)
+	err = m[0].RPCGetFileInfo(gfs.GetFileInfoArg{Path: "testGetFileInfo.txt"}, &r1)
 	if err != nil {
 		t.Error(err)
 	}
@@ -316,8 +299,8 @@ func TestGetFileInfo(t *testing.T) {
 // this chunk should be pad and the data should be appended to the next chunk
 func TestPadOver(t *testing.T) {
 	r := rand.Int()
-	c1 := c[r % msNum]
-	err := c1.Create("/appendOver.txt")
+	c1 := c[r % cNum]
+	err := c1.Create("appendOver.txt")
 	if err != nil {
 		t.Error(err)
 	}
@@ -329,7 +312,7 @@ func TestPadOver(t *testing.T) {
 	}
 
 	for i := 0; i < 4; i++ {
-		_, err = c1.Append("/appendOver.txt", buf)
+		_, err = c1.Append("appendOver.txt", buf)
 		if err != nil {
 			t.Error(err)
 		}
@@ -338,7 +321,7 @@ func TestPadOver(t *testing.T) {
 	buf = buf[:5]
 	var offset int64
 	// an append cause pad, and client should retry to next chunk
-	offset, err = c1.Append("/appendOver.txt", buf)
+	offset, err = c1.Append("appendOver.txt", buf)
 	if err != nil {
 		t.Error(err)
 	}
@@ -350,8 +333,8 @@ func TestPadOver(t *testing.T) {
 // big data that invokes several chunks
 func TestWriteReadBigData(t *testing.T) {
 	r := rand.Int()
-	c1 := c[r % msNum]
-	err := c1.Create("/bigData.txt")
+	c1 := c[r % cNum]
+	err := c1.Create("bigData.txt")
 	if err != nil {
 		t.Error(err)
 	}
@@ -362,14 +345,14 @@ func TestWriteReadBigData(t *testing.T) {
 	}
 
 	// write large data
-	_, err = c1.Write("/bigData.txt", gfs.MaxChunkSize/2, expected)
+	_, err = c1.Write("bigData.txt", gfs.MaxChunkSize/2, expected)
 	if err != nil {
 		t.Error(err)
 	}
 	// read
 	buf := make([]byte, size)
 	var n int64
-	n, err = c1.Read("/bigData.txt", gfs.MaxChunkSize/2, buf)
+	n, err = c1.Read("bigData.txt", gfs.MaxChunkSize/2, buf)
 	if err != nil {
 		t.Error(err)
 	}
@@ -382,7 +365,7 @@ func TestWriteReadBigData(t *testing.T) {
 	}
 
 	// test read at EOF
-	n, err = c1.Read("/bigData.txt", gfs.MaxChunkSize/2+int64(size), buf)
+	n, err = c1.Read("bigData.txt", gfs.MaxChunkSize/2+int64(size), buf)
 	if err == nil {
 		t.Error("an error should be returned if read at EOF")
 	}
@@ -390,7 +373,7 @@ func TestWriteReadBigData(t *testing.T) {
 	// test append offset
 	var offset int64
 	buf = buf[:gfs.MaxAppendSize-1]
-	offset, err = c1.Append("/bigData.txt", buf)
+	offset, err = c1.Append("bigData.txt", buf)
 	if offset != gfs.MaxChunkSize/2+int64(size) {
 		t.Error("append in wrong offset")
 	}
@@ -398,9 +381,6 @@ func TestWriteReadBigData(t *testing.T) {
 		t.Error(err)
 	}
 	// TODO: test over chunk EOF
-	time.Sleep(time.Duration(5) * time.Second)
-	println("GFS SHUTDOWN")
-	gfsShutDown()
 }
 
 /*
@@ -410,8 +390,8 @@ func TestWriteReadBigData(t *testing.T) {
 func TestShutdownMaster(t *testing.T) {
 	r := rand.Int()
 	m1 := m[r % msNum]
-	c1 := c[r % msNum]
-	err := c1.Create("/testShutdownMaster.txt")
+	c1 := c[r % cNum]
+	err := c1.Create("testShutdownMaster.txt")
 	if err != nil {
 		t.Error(err)
 	}
@@ -422,7 +402,7 @@ func TestShutdownMaster(t *testing.T) {
 		buf[i] = byte(i%26 + 'a')
 	}
 
-	_, err = c1.Append("/testShutdownMaster.txt", buf)
+	_, err = c1.Append("testShutdownMaster.txt", buf)
 	if err != nil {
 		t.Error(err)
 	}
@@ -431,7 +411,7 @@ func TestShutdownMaster(t *testing.T) {
 
 	bufR := make([]byte, bound)
 	var n int64
-	n, err = c1.Read("/testShutdownMaster.txt", 0, bufR)
+	n, err = c1.Read("testShutdownMaster.txt", 0, bufR)
 	if err != nil {
 		t.Error(err)
 	}

@@ -166,7 +166,7 @@ func (m *Master) serverCheck() error {
 		}
 		if cs.LastHeartbeat.Add(gfs.ServerTimeout).Before(now) { // dead server
 			gfs.DebugMsgToFile(fmt.Sprintf("server check remove dead server <%s>", addr), gfs.MASTER, m.address)
-			RemoveInMap(m.zk, GetKey(addr, CHUNKSERVER), CHUNKSERVER)
+			RemoveInMap(m.zk, addr, CHUNKSERVER)
 			for h, v := range cs.Chunks {
 				if v { // remove from chunk location
 					Lock(m.zk, GetKey(fmt.Sprintf("%d", h), CHUNKMETADATALOCK))
@@ -190,7 +190,7 @@ func (m *Master) serverCheck() error {
 						ck.Primary = ""
 					}
 					ck.Expire = time.Now()
-					SetInMap(m.zk, GetKey(fmt.Sprintf("%d", h), CHUNKMETADATA), ck, CHUNKMETADATA)
+					SetInMap(m.zk, fmt.Sprintf("%d", h), ck, CHUNKMETADATA)
 
 					// add chunk to replicasNeedList if replica is not enough
 					if len(ck.Location) < gfs.MinimumNumReplicas {
@@ -297,12 +297,12 @@ func (m *Master) reReplicationOne(handle string, chunk *ChunkMetadata) error {
 		return err
 	}
 	cs.Chunks[h] = true
-	SetInMap(m.zk, GetKey(to, CHUNKSERVER), cs, CHUNKSERVER)
+	SetInMap(m.zk, to, cs, CHUNKSERVER)
 	UnLock(m.zk, GetKey(to, CHUNKSERVERLOCK))
 
 	// add to location of chunk
 	chunk.Location = append(chunk.Location, to)
-	SetInMap(m.zk, GetKey(handle, CHUNKMETADATA), *chunk, CHUNKMETADATA)
+	SetInMap(m.zk, handle, *chunk, CHUNKMETADATA)
 	return nil
 }
 
@@ -339,39 +339,23 @@ func (m *Master) chooseReReplication(handle int64) (from, to string, err error) 
 func (m *Master) RPCHeartbeat(args gfs.HeartbeatArg, reply *gfs.HeartbeatReply) error {
 	gfs.DebugMsgToFile(fmt.Sprintf("RPCHeartbeat chunk server address <%s> start", args.Address), gfs.MASTER, m.address)
 	defer gfs.DebugMsgToFile(fmt.Sprintf("RPCHeartbeat chunk server address <%s> end", args.Address), gfs.MASTER, m.address)
-	isFirst := true
 	var chunkServerInfo ChunkServerInfo
 	// no method to delete chunk server info so can not check ok
 	Lock(m.zk, GetKey(args.Address, CHUNKSERVERLOCK))
 	ok := Get(m.zk, GetKey(args.Address, CHUNKSERVER), &chunkServerInfo)
 	if !ok {
 		gfs.DebugMsgToFile(fmt.Sprintf("RPCHeartbeat chunk server address <%s> ok false so first", args.Address), gfs.MASTER, m.address)
-		// new chunk server info
-		chunkServerInfoNew := ChunkServerInfo{LastHeartbeat: time.Now(), Chunks: make(map[int64]bool),
-			Garbage: nil}
-		SetIfAbsentInMap(m.zk, GetKey(args.Address, CHUNKSERVER), chunkServerInfoNew, CHUNKSERVER)
-	} else {
-		isFirst = false
-		// update time
 		chunkServerInfo.LastHeartbeat = time.Now()
-		// send garbage
-		reply.Garbage = chunkServerInfo.Garbage
-		for _, v := range chunkServerInfo.Garbage {
-			chunkServerInfo.Chunks[v] = false
-		}
+		chunkServerInfo.Chunks = make(map[int64]bool)
 		chunkServerInfo.Garbage = make([]int64, 0)
-		Set(m.zk, GetKey(args.Address, CHUNKSERVER), chunkServerInfo)
-		UnLock(m.zk, GetKey(args.Address, CHUNKSERVERLOCK))
-	}
-	if isFirst {
-		// if is first heartbeat, let chunk server report itself
+		// let chunk server report itself
 		var r gfs.ReportSelfReply
 		err := gfs.Call(args.Address, "ChunkServer.RPCReportSelf", gfs.ReportSelfArg{}, &r)
 		if err != nil {
+			UnLock(m.zk, GetKey(args.Address, CHUNKSERVERLOCK))
 			gfs.DebugMsgToFile(fmt.Sprintf("RPCHeartbeat chunk server addreee <%s> start err <%s>", args.Address, err), gfs.MASTER, m.address)
 			return err
 		}
-		garbage := make([]int64, 0)
 		for _, v := range r.Chunks {
 			Lock(m.zk, GetKey(fmt.Sprintf("%d", v.ChunkHandle), CHUNKMETADATALOCK))
 			var chunkMetadata ChunkMetadata
@@ -384,17 +368,27 @@ func (m *Master) RPCHeartbeat(args gfs.HeartbeatArg, reply *gfs.HeartbeatReply) 
 			if v.Checksum == chunkMetadata.Checksum && v.Version == chunkMetadata.Version {
 				gfs.DebugMsgToFile(fmt.Sprintf("RPCHeartbeat chunk server address <%s> append chunk metadata", args.Address), gfs.MASTER, m.address)
 				chunkMetadata.Location = append(chunkMetadata.Location, args.Address)
+				chunkServerInfo.Chunks[v.ChunkHandle] = true
 			} else {
-				garbage = append(garbage, v.ChunkHandle)
+				chunkServerInfo.Garbage = append(chunkServerInfo.Garbage, v.ChunkHandle)
 			}
-			Set(m.zk, GetKey(fmt.Sprintf("%d", v.ChunkHandle), CHUNKMETADATA), chunkMetadata)
+			SetInMap(m.zk, fmt.Sprintf("%d", v.ChunkHandle), chunkMetadata, CHUNKMETADATA)
 			UnLock(m.zk, GetKey(fmt.Sprintf("%d", v.ChunkHandle), CHUNKMETADATALOCK))
 		}
-		// set garbage
-		chunkServerInfo.Garbage = garbage
-		Set(m.zk, GetKey(args.Address, CHUNKSERVER), chunkServerInfo)
+		SetIfAbsentInMap(m.zk, args.Address, chunkServerInfo, CHUNKSERVER)
 		UnLock(m.zk, GetKey(args.Address, CHUNKSERVERLOCK))
 	} else {
+		// update time
+		chunkServerInfo.LastHeartbeat = time.Now()
+		// send garbage
+		reply.Garbage = chunkServerInfo.Garbage
+		for _, v := range chunkServerInfo.Garbage {
+			chunkServerInfo.Chunks[v] = false
+		}
+		chunkServerInfo.Garbage = make([]int64, 0)
+		SetInMap(m.zk, args.Address, chunkServerInfo, CHUNKSERVER)
+		UnLock(m.zk, GetKey(args.Address, CHUNKSERVERLOCK))
+
 		// use slice to avoid handling only front leases to extend
 		var invalidHandle []int64 = make([]int64, 0)
 		var notPrimary []int64 = make([]int64, 0)
@@ -416,7 +410,7 @@ func (m *Master) RPCHeartbeat(args gfs.HeartbeatArg, reply *gfs.HeartbeatReply) 
 				continue
 			}
 			chunkMetadata.Expire = time.Now().Add(gfs.LeaseExpire)
-			Set(m.zk, GetKey(fmt.Sprintf("%d", handle), CHUNKMETADATA), chunkMetadata)
+			SetInMap(m.zk, fmt.Sprintf("%d", handle), chunkMetadata, CHUNKMETADATA)
 			UnLock(m.zk, GetKey(fmt.Sprintf("%d", handle), CHUNKMETADATALOCK))
 		}
 		if len(invalidHandle) == 0 && len(notPrimary) == 0 {
@@ -428,7 +422,7 @@ func (m *Master) RPCHeartbeat(args gfs.HeartbeatArg, reply *gfs.HeartbeatReply) 
 			copy(reply.NotPrimary, notPrimary)
 			err := fmt.Errorf("something wrong happened in extend lease, see reply for more information")
 			gfs.DebugMsgToFile(fmt.Sprintf("RPCHeartbeat chunk server addreee <%s> start err <%s>", args.Address, err), gfs.MASTER, m.address)
-			return err
+			return nil
 		}
 	}
 	return nil
@@ -449,6 +443,7 @@ func (m *Master) RPCGetReplicas(args gfs.GetReplicasArg, reply *gfs.GetReplicasR
 	if !ok {
 		err := fmt.Errorf("cannot find chunk %d", args.Handle)
 		gfs.DebugMsgToFile(fmt.Sprintf("RPCGetReplicas chunk handle <%d> error <%s>", args.Handle, err), gfs.MASTER, m.address)
+		UnLock(m.zk, GetKey(fmt.Sprintf("%d", args.Handle), CHUNKMETADATALOCK))
 		return err
 	}
 	// check expire
@@ -510,7 +505,7 @@ func (m *Master) RPCGetReplicas(args gfs.GetReplicasArg, reply *gfs.GetReplicasR
 			if len(chunkMetadata.Location) == 0 {
 				// TODO: solve no replica err
 				chunkMetadata.Version--
-				Set(m.zk, GetKey(fmt.Sprintf("%d", args.Handle), CHUNKMETADATA), chunkMetadata)
+				SetInMap(m.zk, fmt.Sprintf("%d", args.Handle), chunkMetadata, CHUNKMETADATA)
 				err := fmt.Errorf("no replica of %v", args.Handle)
 				gfs.DebugMsgToFile(fmt.Sprintf("RPCGetReplicas chunk handle <%d> error <%s>", args.Handle, err), gfs.MASTER, m.address)
 				UnLock(m.zk, GetKey(fmt.Sprintf("%d", args.Handle), CHUNKMETADATALOCK))
@@ -529,7 +524,7 @@ func (m *Master) RPCGetReplicas(args gfs.GetReplicasArg, reply *gfs.GetReplicasR
 			reply.Secondaries = append(reply.Secondaries, v)
 		}
 	}
-	Set(m.zk, GetKey(fmt.Sprintf("%d", args.Handle), CHUNKMETADATA), chunkMetadata)
+	SetInMap(m.zk, fmt.Sprintf("%d", args.Handle), chunkMetadata, CHUNKMETADATA)
 	gfs.DebugMsgToFile(fmt.Sprintf("RPCGetReplicas chunk handle <%d> release chunk metadata lock", args.Handle), gfs.MASTER, m.address)
 	UnLock(m.zk, GetKey(fmt.Sprintf("%d", args.Handle), CHUNKMETADATALOCK))
 	// add garbage
@@ -543,7 +538,7 @@ func (m *Master) RPCGetReplicas(args gfs.GetReplicasArg, reply *gfs.GetReplicasR
 		}
 		chunkServerInfo.Chunks[args.Handle] = false
 		chunkServerInfo.Garbage = append(chunkServerInfo.Garbage, args.Handle)
-		Set(m.zk, GetKey(v, CHUNKSERVER), chunkServerInfo)
+		SetInMap(m.zk, v, chunkServerInfo, CHUNKSERVER)
 		UnLock(m.zk, GetKey(v, CHUNKSERVERLOCK))
 	}
 	return nil
@@ -590,7 +585,7 @@ func (m *Master) RPCGetChunkHandle(args gfs.GetChunkHandleArg, reply *gfs.GetChu
 		}
 
 		reply.Handle, addrs, e = m.createChunk(&fileMetadata, addrs)
-		Set(m.zk, GetKey(args.Path, FILEMETADATA), fileMetadata)
+		SetInMap(m.zk, args.Path, fileMetadata, FILEMETADATA)
 		if e != nil {
 			e = fmt.Errorf("create chunk for path %s failed in some chunk servers %s", args.Path, e)
 			gfs.DebugMsgToFile(fmt.Sprintf("RPCGetChunkHandle path <%s> index <%d> error <%s>", args.Path, args.Index, e), gfs.MASTER, m.address)
@@ -657,18 +652,18 @@ func (m *Master) createChunk(fileMetadata *FileMetadata, addrs []string) (int64,
 			chunkMetadata.Location = append(chunkMetadata.Location, v)
 			success = append(success, v)
 			var chunkServerInfo ChunkServerInfo
+			Lock(m.zk, GetKey(v, CHUNKSERVERLOCK))
 			infoOk := Get(m.zk, GetKey(v, CHUNKSERVER), &chunkServerInfo)
 			if infoOk {
-				Lock(m.zk, GetKey(v, CHUNKSERVERLOCK))
 				chunkServerInfo.Chunks[handle] = true
-				Set(m.zk, GetKey(v, CHUNKSERVER), chunkServerInfo)
-				UnLock(m.zk, GetKey(v, CHUNKSERVERLOCK))
+				SetInMap(m.zk, v, chunkServerInfo, CHUNKSERVER)
 			}
+			UnLock(m.zk, GetKey(v, CHUNKSERVERLOCK))
 		} else {
 			errList += err.Error() + ";"
 		}
 	}
-	SetIfAbsentInMap(m.zk, GetKey(fmt.Sprintf("%d", handle), CHUNKMETADATA), chunkMetadata, CHUNKMETADATA)
+	SetIfAbsentInMap(m.zk, fmt.Sprintf("%d", handle), chunkMetadata, CHUNKMETADATA)
 
 	if errList == "" {
 		return handle, success, nil
@@ -694,7 +689,7 @@ func (m *Master) RPCCreateFile(args gfs.CreateFileArg, reply *gfs.CreateFileRepl
 	fileMetadata.IsDir = false
 	fileMetadata.Size = 0
 	fileMetadata.ChunkHandles = nil
-	ok := SetIfAbsentInMap(m.zk, GetKey(args.Path, FILEMETADATA), *fileMetadata, FILEMETADATA)
+	ok := SetIfAbsentInMap(m.zk, args.Path, *fileMetadata, FILEMETADATA)
 	if !ok {
 		err := fmt.Errorf("path %s has already existed", args.Path)
 		gfs.DebugMsgToFile(fmt.Sprintf("RPCCreateFile path <%s> error <%s>", args.Path, err), gfs.MASTER, m.address)
@@ -708,42 +703,25 @@ func (m *Master) RPCDeleteFile(args gfs.DeleteFileArg, reply *gfs.DeleteFileRepl
 	gfs.DebugMsgToFile(fmt.Sprintf("RPCDeleteFile path <%s> start", args.Path), gfs.MASTER, m.address)
 	defer gfs.DebugMsgToFile(fmt.Sprintf("RPCDeleteFile path <%s> end", args.Path), gfs.MASTER, m.address)
 	var fileMetadata FileMetadata
-	key := GetKey(args.Path, FILEMETADATA)
-	exist := Get(m.zk, key, &fileMetadata)
+	Lock(m.zk, GetKey(args.Path, FILEMETADATALOCK))
+	exist := Get(m.zk, GetKey(args.Path, FILEMETADATA), &fileMetadata)
 	if !exist {
+		UnLock(m.zk, GetKey(args.Path, FILEMETADATALOCK))
 		err := fmt.Errorf("path %s does not exsit", args.Path)
 		gfs.DebugMsgToFile(fmt.Sprintf("RPCDeleteFile path <%s> error <%s>", args.Path, err), gfs.MASTER, m.address)
 		return err
 	}
-	Lock(m.zk, GetKey(args.Path, FILEMETADATALOCK))
 	if fileMetadata.IsDir {
-		UnLock(m.zk, key)
+		UnLock(m.zk, GetKey(args.Path, FILEMETADATALOCK))
 		err := fmt.Errorf("path %s is not a file", args.Path)
 		gfs.DebugMsgToFile(fmt.Sprintf("RPCDeleteFile path <%s> error <%s>", args.Path, err), gfs.MASTER, m.address)
 		return err
 	}
 	// may fail but without error throw
-	RemoveInMap(m.zk, key, FILEMETADATA)
-	UnLock(m.zk, GetKey(args.Path, FILEMETADATALOCK))
+	RemoveInMap(m.zk, args.Path, FILEMETADATA)
 	// lazy delete
 	// may fail
-	SetIfAbsentInMap(m.zk, GetKey(gfs.DeletedFilePrefix+args.Path, FILEMETADATA), fileMetadata, FILEMETADATA)
-	return nil
-}
-
-// RPCMkdir is called by client to make a new directory
-func (m *Master) RPCMkdir(args gfs.MkdirArg, reply *gfs.MkdirReply) error {
-	gfs.DebugMsgToFile(fmt.Sprintf("RPCMkdir path <%s> start", args.Path), gfs.MASTER, m.address)
-	defer gfs.DebugMsgToFile(fmt.Sprintf("RPCMkdir path <%s> end", args.Path), gfs.MASTER, m.address)
-	fileMetadata := new(FileMetadata)
-	fileMetadata.IsDir = true
-	fileMetadata.Size = 0
-	fileMetadata.ChunkHandles = nil
-	ok := SetIfAbsentInMap(m.zk, GetKey(args.Path, FILEMETADATA), *fileMetadata, FILEMETADATA)
-	if !ok {
-		err := fmt.Errorf("path %s has already existed", args.Path)
-		gfs.DebugMsgToFile(fmt.Sprintf("RPCCreateFile path <%s> error <%s>", args.Path, err), gfs.MASTER, m.address)
-		return err
-	}
+	SetIfAbsentInMap(m.zk, gfs.DeletedFilePrefix+args.Path, fileMetadata, FILEMETADATA)
+	UnLock(m.zk, GetKey(args.Path, FILEMETADATALOCK))
 	return nil
 }
