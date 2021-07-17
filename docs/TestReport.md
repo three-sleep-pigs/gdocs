@@ -5,46 +5,55 @@
 ## Naive gDocs
 
 ### 1. Correctness Test
+
 *Naive gDocs*的后端采用junit对Controller层与service层的逻辑进行正确性测试。
 测试用例遵循分支覆盖的原则进行设计，使得程序中每个判断的取真分支和取假分支至少经历一次。
 
 测试文件见`/code/gdocsbackend/src/test/java/com/gdocs/backend`目录下3个`$ControllerTest.java`文件，测试的接口如下所示，正确性测试全部通过。
+
 * **Test Result**
+  
   * LoginControllerTest
-
+  
   ![](./photos/logintest.png)
+  
   * FileControllerTest
-
+  
   ![](./photos/filetest.png)
+  
   * EditControllerTest
-
+  
   ![](./photos/edittest.png)
 
 * **Test Coverage**
-  *  Controller
-  ![](./photos/controllercoverage.png)
+  
+  * Controller
+    ![](./photos/controllercoverage.png)
   * Service
-  ![](./photos/servicecoverage.png)
+    ![](./photos/servicecoverage.png)
 
 ### 2. Performance Test
+
 *Naive gDocs*的后端采用jmeter对Controller层接口进行性能测试。
 
 测试文件见`\code\gdocsbackend\performance.jmx`。
 
 * **测试环境**
+  
   > 处理器：Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz   2.59 GHz
-  >
+  > 
   > RAM：16.0 GB (15.8 GB 可用)
   > 
   > 操作系统：Windows 10 家庭中文版 20H2
-  >
+  > 
   > 测试工具：apache-jmeter-5.3
-  >
+  > 
   > 线程组：100，启动时间：5s，循环次数：6
 * **测试结果**(单位：ms)
   ![](./photos/backendperformance.png)
 
 ### 3. Interpretation of Results
+
   正确性测试以较高的覆盖率完成了测试，并且接口的正确性全部通过，每个请求可以针对不同的错误类型(如：文件不存在，写入DFS失败等)返回不同的reply参数，保有容错性，使前端能够针对参数进行解析反馈给客户端错误类型。
 
   在性能测试中，后端接口*addEditRecord,deleteFile,recoverFile*的主要操作是对数据库进行插入和修改，可从结果得知对大量并发的请求也具有较好的支持性。
@@ -175,6 +184,7 @@
 + **cache**
   
   由于 *Multi-Master DFS* 性能不加，主要原因有每次读取元数据都需要与 zookeeper 进行交互的原因，可以考虑在每个 master 节点增加 cache，但是这样会引入一致性的问题。
+
 + **Read-Write lock**
   
   通过 zookeeper 提供的接口，设计读写锁，替换掉项目中对应的 spin lock 来提高性能。

@@ -3,10 +3,10 @@
 team members information:
 
 ```
-[Leader]   518021910515 - 许嘉琦: {X}%
-[Member 1] 518021910375 - 廖苡辰: {Y}%
-[Member 2] 518030910456 - 李萱: {Z}%
-[Member 3] 518030910168 - 郭梦琪: {Z}%
+[Leader]   518021910515 - 许嘉琦: {28}%
+[Member 1] 518021910375 - 廖苡辰: {28}%
+[Member 2] 518021910456 - 李萱: {28}%
+[Member 3] 518030910168 - 郭梦琪: {16}%
 ```
 
 the structure of the repo of our team is:

@@ -596,7 +596,7 @@ func (m *Master) RPCHeartbeat(args gfs.HeartbeatArg, reply *gfs.HeartbeatReply) 
 			copy(reply.NotPrimary, notPrimary)
 			err := fmt.Errorf("something wrong happened in extend lease, see reply for more information")
 			gfs.DebugMsgToFile(fmt.Sprintf("RPCHeartbeat chunk server addreee <%s> start err <%s>", args.Address, err), gfs.MASTER, m.address)
-			return err
+			return nil
 		}
 	}
 	return nil
