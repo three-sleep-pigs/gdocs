@@ -3,17 +3,45 @@
 **Team: three-sleepy-pigs**
 
 ## Naive gDocs
-### 1.System Architecture
+### 1. Introduction
+
++ 文档格式：sheets
+
++ 基本功能
+  + 用户登录注册：
+    + 用户名作为用户身份的唯一标识
+    + 用户使用用户名和密码完成注册和登录
+  + 浏览文件列表
+    + 所有用户可以查看和编辑所有文件
+    + 以列表形式呈现了文件的文件名、创建人、最近编辑时间信息
+    + 提供了编辑文件和删除文件的操作
+  + 多用户同步编辑Excel文件
+    + 用户可同步编辑同一共享的excel文件
+    + 对文件中的内容、字体、格式等均可同步编辑
+    + 显示正在被其他用户编辑的单元格以及用户名
+    + 每次编辑操作均会被自动保存并生成编辑记录
+  + 浏览回收站及删除和恢复文件
+    + 回收站以列表形式呈现被删除的文件的文件名、创建人信息
+    + 提供了每个已删除文件的恢复操作
++ 进阶功能
+  + 浏览编辑记录
+    + 每个文件的编辑记录页面以列表形式呈现了每次编辑的编辑人、编辑时间、编辑类型信息
+  + 回滚文件至历史版本
+    + 可以将文件回滚至任一历史版本
++ 技术实现
+  + 前端：js+react框架，luckysheet插件实现excel格式共享文档
+  + 后端：java+springboot框架+MySQL数据库+DFS
+  + 前后端通过ajax请求和websocket通信
 
 ### 2. Basic Requirements
 * **Multi-Users Collaboration Editing**
 
   多用户共同编辑时，客户端用websocket的方式来通信。进入编辑页面时，每个用户与后端建立websocket连接，后端为用户生成一个*OnlineExcelWebSocketServer*，其中的属性有：
-  1. *tokenMap*：一个 ConcurrentHashMap，用来存放每个连接的客户端对应的*OnlineExcelWebSocketServer*对象。
-  2. *session*：与每个客户端的连接会话，需要通过它来给客户端发送数据。
-  3. *userId*：客户端的特有标识。
-  4. *fileId*,*version*：用户正在编辑的文件的标识。
-  5. *edited*：本次连接是否编辑文件。
+  * *tokenMap*：一个 ConcurrentHashMap，用来存放每个连接的客户端对应的*OnlineExcelWebSocketServer*对象。
+  * *session*：与每个客户端的连接会话，需要通过它来给客户端发送数据。
+  * *userId*：客户端的特有标识。
+  * *fileId*,*version*：用户正在编辑的文件的标识。
+  * *edited*：本次连接是否编辑文件。
 
   在*OnCreate*阶段，从客户端的ws请求路径获取参数，初始化一个*OnlineExcelWebSocketServer*对象，并加入*tokenMap*。
 
@@ -29,21 +57,23 @@
 
   在删除文件时，为了能够回收，并非通过DFS的删除功能删除，而是为文件增加了*deleted*属性，将其置1，在获取文件列表和回收站时根据该属性进行筛选。回收时再将该属性置0。只有清空回收站时，在DFS中真正地删除。
 ### 3. Advanced Requirements
-* **modification log**
+* **Modification Log**
 
   在Multi-Users Collaboration Editing中提到，若*edited*置1则添加一条该用户的编辑记录，其中属性有：
-  1. *fileID*: 被编辑文件的ID。
-  2. *editor*: 编辑人的用户名。
-  3. *length*: 编辑后的文件长度。
-  4. *version*: 被编辑文件的版本号。
-  5. *operation*: 此次编辑操作的类型，其中，0：创建，1：修改数据，2：删除，3：恢复，4：版本回滚。
-  6. *editTime*: 编辑时间
+  * *fileID*: 被编辑文件的ID。
+  * *editor*: 编辑人的用户名。
+  * *length*: 编辑后的文件长度。
+  * *version*: 被编辑文件的版本号。
+  * *operation*: 此次编辑操作的类型，其中，0：创建，1：修改数据，2：删除，3：恢复，4：版本回滚。
+  * *editTime*: 编辑时间
   
   在客户端查看编辑记录时，展示所有编辑记录的列表，其中每一次编辑当时具体的文件内容可以通过 *fileID*，*length*，*version*从DFS中读出，展示编辑后的文件。此功能类似于现有的新浪微博的编辑记录功能。
 
-* **version rollback**
+* **Version Rollback**
   
   客户端可以根据编辑记录进行版本回滚的控制。通过 *fileID*，*length*，*version*从DFS中读出该次编辑后的文件内容，将其复制到新文件中，并更新文件的版本，在DFS中命名文件为*filename_version.txt*。对文件的后续编辑将在新版本文件中完成。
+
+
 
 ## Distributed File System
 
