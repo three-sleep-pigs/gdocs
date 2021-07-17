@@ -67,12 +67,11 @@
   * *operation*: 此次编辑操作的类型，其中，0：创建，1：修改数据，2：删除，3：恢复，4：版本回滚。
   * *editTime*: 编辑时间
   
-  为每个文件记录版本号，初始值为0，在DFS中命名文件为*filename_version.txt*。
-  在每条编辑记录中记录该次编辑对应的文件名，版本号，操作人及操作完成后的文件offset，读取编辑记录时可以根据文件名和版本号从DFS中取文件，读到对应的offset。此时从DFS中读出的是某次编辑之后的全部文件内容。
+  在客户端查看编辑记录时，展示所有编辑记录的列表，其中每一次编辑当时具体的文件内容可以通过 *fileID*，*length*，*version*从DFS中读出，展示编辑后的文件。此功能类似于现有的新浪微博的编辑记录功能。
 
 * **Version Rollback**
   
-  客户端可以根据编辑记录进行版本回滚的控制。通过 *fileID*，*length*，*version*从DFS中读出该次编辑后的文件内容，将其复制到新文件中，并更新文件的版本，为文件原版本+1，在DFS中生成新文件命名文件为*filename_version.txt*。对文件的后续编辑将在新版本文件中完成，这样能够避免每次编辑都保存新文件的空间浪费问题，也可以避免只在同一个文件中根据offset控制版本的后续写操作的覆盖问题。
+  客户端可以根据编辑记录进行版本回滚的控制。通过 *fileID*，*length*，*version*从DFS中读出该次编辑后的文件内容，将其复制到新文件中，并更新文件的版本，在DFS中命名文件为*filename_version.txt*。对文件的后续编辑将在新版本文件中完成。
 
 
 
@@ -92,13 +91,60 @@
 ### 2. Basic Requirements
 
 * **Operation**
-* **Chunk**
-* **Replication**
-* **Fault Tolerance**
-* **Consistency**
-* **Concurrency Control**
-* **Failure Recovery**
+
+  *DFS* 通过HTTP协议为 *gDocs* 提供服务，以下是 *DFS* 提供的接口。
   
-  ### 3. Advanced Requirements
+  基本功能：
+  
+  */create* request{"Path":string}                              response{"Success":bool, "Error":string}
+  
+  */delete* request{"Path":string}                              response{"Success":bool, "Error":string}
+  
+  */rename* request{"Source":string, "Target":string}           response{"Success":bool, "Error":string}
+  
+  */mkdir*  request{"Path":string}                              response{"Success":bool, "Error":string}
+  
+  */read*   request{"Path":string, "Offset":int, "Length":int}  response{"Success":bool, "Error":string, "Data":string}
+  
+  */write*  request{"Path":string, "Offset":int, "Data":string} response{"Success":bool, "Error":string, "Size":int}
+  
+  附加功能：
+  
+  */append* request{"Path":string, "Data":string}               response{"Success":bool, "Error":string, "Offset":int}
+  
+* **Chunk**
+  
+  依照 *GFS* 将文件分解成大小固定的 *chunk* ，并在 *master* 中维护文件到 *chunk* 的映射关系。
+  
+* **Replication**
+
+  每个 *chunk* 在创建时会在不同的 *chunk server* 中创建多个备份，*chunk server* 和 *master* 都会保存 *chunk* 的 *version* 。*chunk server* 会定期给 *master* 发送 *heartbeat* 来检测 *chunk* 的版本并进行垃圾回收；*master* 会定期检测 *chunk* 的备份数量，为备份数量过少的 *chunk* 选择 *chunk server* 添加备份。
+
+* **Fault Tolerance**
+
+  由于每个 *chunk* 有多个备份，只要一个 *chunk* 的所有备份不同时宕机，*master* 就能通过定期的系统检测为这个 *chunk* 重新添加备份，因此 *chunk server* 有很好的容错性。
+  
+  单 *master* 的实现中，*master* 一旦崩溃，系统就会停止工作。而多 *master* 的实现中，通过 *zookeeper* 来保障一致性，只要所有 *master* 不同时宕机，系统就能正常工作。
+
+* **Consistency**
+
+  依照 *GFS* 的一致性模型，*master* 为每个 *chunk* 管理 *lease* ，在一段 *lease* 中只有一个 *chunk server* 作为 *primary* ，其他的备份实施 *mutation* 的顺序必须与 *primary* 一致（由*chunk version* 保证），由此保证 *chunk* 备份的一致性。当 *primary* 正在实施 *mutation* 时，若 *lease* 即将到期， *primary* 会向 *master* 发送请求延长 *lease* 。若 *primary* 宕机，*client* 会向 *master* 重新发送请求，*master* 会再次选出 *primary* 。
+  
+  单 *master* 的实现中，*metadata* 的一致性由 *concurrent map* 与读写锁保证。而多 *master* 的实现中，*metadata* 的一致性由 *zookeeper* 加 *spin lock* 保证。
+
+* **Concurrency Control**
+
+  支持多 *client* 、多 *master* 、多 *chunk server* 、*zookeeper* 集群并发运行。
+  
+### 3. Advanced Requirements
 * **Scalability**
+
+  *master* 和 *chunk server* 通过 *heartbeat* 进行动态连接，支持动态添加 *chunk server* ，具有良好的可扩展性。
+
 * **Efficiency**
+  
+  单 *master* 的实现中，采用 *concurrent map* 和读写锁来保证 *metadata* 的一致性，采用相对宽松的一致性模型来保证备份的一致性，获得了不错的性能表现（详情见测试报告中的性能测试）。而在多 *master* 的实现中，为了实现 *master* 的容错而引入了 *zookeeper* ，导致性能大幅降低。根据CAP原理，二者不能兼得。
+  
+* **Other**
+
+  在基本要求的接口之外，我们实现了 *append* 功能来支持高效的写操作，实现了能支持 *snapshot* 的数据结构来支持高效的文件复制操作，但由于时间限制没能完成 *snapshot* 的写时复制。
