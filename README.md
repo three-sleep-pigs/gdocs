@@ -1,6 +1,6 @@
 ## Lab 2 - Naive gDocs
 
-Enter your team members here:
+team members information:
 
 ```
 [Leader]   518021910515 - 许嘉琦: {X}%
@@ -9,14 +9,12 @@ Enter your team members here:
 [Member 3] 518030910168 - 郭梦琪: {Z}%
 ```
 
-where `X, Y, Z` represent the workload and  `X+Y+Z = 100` .
-
-For more details, please read `docs/Lab2-gDocs.pdf` .
-
-After submission, the structure of the repo of your team should be:
+the structure of the repo of our team is:
 
 ```text
 your-repo/
+main branch for Single-Master DFS Architecture
+multi-master branch for Multi-Master DFS Architecture
 +-- README.md
 +-- .gitignore
 +-- code/

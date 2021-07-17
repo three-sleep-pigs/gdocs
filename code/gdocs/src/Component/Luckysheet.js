@@ -22,18 +22,6 @@ class Luckysheet extends React.Component {
             userInfo: '<i style="font-size:16px;color:#ff6a00;" class="fa fa-user-circle" aria-hidden="true">' + localStorage.getItem('username') + '</i>',
             loadUrl: "http://localhost:8888/publicApi/excel/downData?id="+this.props.id+"&version="+this.props.version+"&edit="+this.props.edit,
             updateUrl: socket_url,
-            // hook:{
-            //     updated:function(e){
-            //         var autoSave
-            //         //监听更新,并在3s后自动保存
-            //         if(autoSave) clearTimeout(autoSave)
-            //         autoSave = setTimeout(function(){
-            //             var excel = luckysheet.getAllSheets();
-            //             console.log(excel[0].celldata)
-            //         },3 * 1000)
-            //         return true;
-            //     }
-            // },
         });
     }
     render() {

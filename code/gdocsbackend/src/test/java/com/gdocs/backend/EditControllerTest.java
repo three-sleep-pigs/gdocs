@@ -2,6 +2,7 @@ package com.gdocs.backend;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gdocs.backend.Entity.Edit;
 import com.gdocs.backend.Entity.GFile;
 import org.junit.Before;
 import org.junit.Test;
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
 import org.springframework.test.annotation.Rollback;
 import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.test.web.servlet.MockMvc;
@@ -48,19 +50,94 @@ public class EditControllerTest extends BackendApplicationTests {
     public void contextLoads() {
     }
 
+
     @Test
     @Transactional
-    public void checkHome() throws Exception {
-        MvcResult result =  mockMvc.perform(get("/home")).andExpect(status().isOk()).andReturn();
+    public void checkEditFileSuccess() throws Exception {
+        MvcResult result =  mockMvc.perform(get("/editFile").content("{\"username\":\"123\",\"id\":10}").contentType(MediaType.APPLICATION_JSON_VALUE))
+                .andExpect(status().isOk()).andReturn();
         String resultContent = result.getResponse().getContentAsString();
-        assertEquals("",resultContent);
+        Integer reply = om.readValue(resultContent, new TypeReference<Integer>() {});
+        assertEquals(200,reply);
     }
 
     @Test
     @Transactional
-    public void checkOnlineProductExcel() throws Exception {
-        MvcResult result =  mockMvc.perform(post("/publicApi/excel/downData?id=10&version=0&edit=58")).andExpect(status().isOk()).andReturn();
+    public void checkEditFileEmpty() throws Exception {
+        MvcResult result =  mockMvc.perform(get("/editFile").content("{\"username\":\"123\",\"id\":11}").contentType(MediaType.APPLICATION_JSON_VALUE))
+                .andExpect(status().isOk()).andReturn();
         String resultContent = result.getResponse().getContentAsString();
-        System.out.print(resultContent.length());
+        Integer reply = om.readValue(resultContent, new TypeReference<Integer>() {});
+        assertEquals(400,reply);
+    }
+
+    @Test
+    @Transactional
+    public void checkUpdateFileSuccess() throws Exception {
+        MvcResult result =  mockMvc.perform(get("/updateFile").content("{\"id\":10,\"append\":0}").contentType(MediaType.APPLICATION_JSON_VALUE))
+                .andExpect(status().isOk()).andReturn();
+        String resultContent = result.getResponse().getContentAsString();
+        Integer reply = om.readValue(resultContent, new TypeReference<Integer>() {});
+        assertEquals(200,reply);
+    }
+
+    @Test
+    @Transactional
+    public void checkUpdateFileEmpty() throws Exception {
+        MvcResult result =  mockMvc.perform(get("/updateFile").content("{\"id\":11,\"append\":0}").contentType(MediaType.APPLICATION_JSON_VALUE))
+                .andExpect(status().isOk()).andReturn();
+        String resultContent = result.getResponse().getContentAsString();
+        Integer reply = om.readValue(resultContent, new TypeReference<Integer>() {});
+        assertEquals(400,reply);
+    }
+
+    @Test
+    @Transactional
+    public void checkGetEditRecord() throws Exception {
+        MvcResult result =  mockMvc.perform(get("/getEditRecord").content("{\"id\":10}").contentType(MediaType.APPLICATION_JSON_VALUE))
+                .andExpect(status().isOk()).andReturn();
+        String resultContent = result.getResponse().getContentAsString();
+        List<Edit> reply = om.readValue(resultContent, new TypeReference<List<Edit>>() {});
+        assertEquals(6,reply.size());
+    }
+
+    @Test
+    @Transactional
+    public void checkRollbackReadError() throws Exception {
+        MvcResult result =  mockMvc.perform(get("/rollback").content("{\"file\":10,\"edit\":58,\"username\":\"123\"}").contentType(MediaType.APPLICATION_JSON_VALUE))
+                .andExpect(status().isOk()).andReturn();
+        String resultContent = result.getResponse().getContentAsString();
+        Integer reply = om.readValue(resultContent, new TypeReference<Integer>() {});
+        assertEquals(402,reply);
+    }
+
+    @Test
+    @Transactional
+    public void checkRollbackCreateError() throws Exception {
+        MvcResult result =  mockMvc.perform(get("/rollback").content("{\"file\":23,\"edit\":52,\"username\":\"123\"}").contentType(MediaType.APPLICATION_JSON_VALUE))
+                .andExpect(status().isOk()).andReturn();
+        String resultContent = result.getResponse().getContentAsString();
+        Integer reply = om.readValue(resultContent, new TypeReference<Integer>() {});
+        assertEquals(403,reply);
+    }
+
+    @Test
+    @Transactional
+    public void checkRollbackSuccess() throws Exception {
+        MvcResult result =  mockMvc.perform(get("/rollback").content("{\"file\":24,\"edit\":58,\"username\":\"123\"}").contentType(MediaType.APPLICATION_JSON_VALUE))
+                .andExpect(status().isOk()).andReturn();
+        String resultContent = result.getResponse().getContentAsString();
+        Integer reply = om.readValue(resultContent, new TypeReference<Integer>() {});
+        assertEquals(200,reply);
+    }
+
+    @Test
+    @Transactional
+    public void checkRollbackEmpty() throws Exception {
+        MvcResult result =  mockMvc.perform(get("/rollback").content("{\"file\":11,\"edit\":52,\"username\":\"123\"}").contentType(MediaType.APPLICATION_JSON_VALUE))
+                .andExpect(status().isOk()).andReturn();
+        String resultContent = result.getResponse().getContentAsString();
+        Integer reply = om.readValue(resultContent, new TypeReference<Integer>() {});
+        assertEquals(401,reply);
     }
 }
