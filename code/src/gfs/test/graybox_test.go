@@ -5,9 +5,11 @@ import (
 	"../chunkserver"
 	"../client"
 	"../master"
+	"fmt"
 	"math/rand"
 	"os"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 )
@@ -418,4 +420,90 @@ func TestShutdownMaster(t *testing.T) {
 	if n != int64(bound) {
 		t.Error("read byte error")
 	}
+}
+
+/*
+*  TEST SUITE 6 - Performance Tests
+ */
+func BenchmarkCreate(b *testing.B) {
+	if c == nil {
+		gfsRun()
+		time.Sleep(time.Duration(1) * time.Second)
+	}
+	b.ResetTimer()
+	var wg sync.WaitGroup
+	wg.Add(N)
+	for i := 0; i < N; i++ {
+		go func (i int) {
+			c[0].Create(fmt.Sprintf("test%d.txt", i))
+			wg.Done()
+		}(i)
+	}
+	wg.Wait()
+}
+
+func BenchmarkWrite(b *testing.B) {
+	if c == nil {
+		gfsRun()
+		time.Sleep(time.Duration(1) * time.Second)
+	}
+	bound := gfs.MaxAppendSize - 1
+	buf := make([]byte, bound)
+	for i := 0; i < bound; i++ {
+		buf[i] = byte(i%26 + 'a')
+	}
+	var wg sync.WaitGroup
+	b.ResetTimer()
+	n := b.N
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func (i int) {
+			c[0].Write(fmt.Sprintf("test%d.txt", i%N), 0, buf)
+			wg.Done()
+		}(i)
+	}
+	wg.Wait()
+}
+
+func BenchmarkAppend(b *testing.B) {
+	if c == nil {
+		gfsRun()
+		time.Sleep(time.Duration(1) * time.Second)
+	}
+	bound := gfs.MaxAppendSize - 1
+	buf := make([]byte, bound)
+	for i := 0; i < bound; i++ {
+		buf[i] = byte(i%26 + 'a')
+	}
+	var wg sync.WaitGroup
+	b.ResetTimer()
+	n := b.N
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func (i int) {
+			c[0].Append(fmt.Sprintf("test%d.txt", i%N), buf)
+			wg.Done()
+		}(i)
+	}
+	wg.Wait()
+}
+
+func BenchmarkRead(b *testing.B) {
+	if c == nil {
+		gfsRun()
+		time.Sleep(time.Duration(1) * time.Second)
+	}
+	bound := gfs.MaxAppendSize - 1
+	buf := make([]byte, bound)
+	var wg sync.WaitGroup
+	b.ResetTimer()
+	n := b.N
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func (i int) {
+			c[0].Read(fmt.Sprintf("test%d.txt", i%N), 0, buf)
+			wg.Done()
+		}(i)
+	}
+	wg.Wait()
 }
