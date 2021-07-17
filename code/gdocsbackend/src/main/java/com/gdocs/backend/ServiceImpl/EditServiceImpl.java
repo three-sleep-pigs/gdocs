@@ -8,17 +8,18 @@ import com.gdocs.backend.Entity.GFile;
 import com.gdocs.backend.Service.EditService;
 import com.gdocs.backend.Util.HTTPUtil;
 import com.gdocs.backend.Util.JSONParse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Optional;
 
 import static com.gdocs.backend.Util.Constant.*;
 
+@Slf4j
 @Service
 public class EditServiceImpl implements EditService {
     @Autowired
@@ -29,6 +30,7 @@ public class EditServiceImpl implements EditService {
     @Override
     public String downExcelData(Integer id,Integer version,Integer edit)
     {
+        log.info("fileid:{},version:{},edit:{}", id,version,edit);
         Optional<GFile> optionalGFile = gFileDao.getGFileById(id);
         if (optionalGFile.isPresent())
         {
@@ -39,7 +41,8 @@ public class EditServiceImpl implements EditService {
             {
                 length = gFile.getLength();
             } else {
-                length = editDao.getById(id).getLength();
+                length = editDao.getById(edit).getLength();
+                log.info("length:{}",length);
             }
             JSONObject jsonObject = new JSONObject();
             jsonObject.put("Path",id + "_" + version +".txt");
@@ -63,6 +66,7 @@ public class EditServiceImpl implements EditService {
                 if (reply.get("Success").equals(true))
                 {
                     data = reply.get("Data").toString();
+                    log.info(data);
                     System.out.print("GET+DATA:"+data+"\r");
 
                 }

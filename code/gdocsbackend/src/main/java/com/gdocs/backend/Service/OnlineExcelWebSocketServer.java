@@ -4,7 +4,6 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.gdocs.backend.Configure.GetHttpSessionConfigurator;
 import com.gdocs.backend.Dao.EditDao;
-import com.gdocs.backend.Entity.Edit;
 import com.gdocs.backend.Util.HTTPUtil;
 import com.gdocs.backend.Util.JSONParse;
 import com.gdocs.backend.Util.Pako_GzipUtils;
@@ -15,17 +14,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
-import org.springframework.util.ResourceUtils;
 
 import javax.websocket.*;
 import javax.websocket.server.PathParam;
 import javax.websocket.server.ServerEndpoint;
-import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
-import java.net.URLDecoder;
-import java.sql.Timestamp;
-import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -37,8 +30,6 @@ import static com.gdocs.backend.Util.Constant.*;
 @Service
 @ServerEndpoint(value = "/excelSocket/{name}/{file}/{version}", configurator = GetHttpSessionConfigurator.class)
 public class OnlineExcelWebSocketServer {
-    @Autowired
-    private EditDao editDao;
     /**
      * 静态变量，用来记录当前连接数
      */

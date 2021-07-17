@@ -160,13 +160,12 @@ public class FileServiceImpl implements FileService {
             edit.setVersion(gFile.getVersion());
             edit.setEdittime(Timestamp.valueOf(LocalDateTime.now()));
             gFileDao.setRecentById(edit.getEdittime(),fileId);
+            if (editDao.save(edit) != null)
+            {
+                return 200;
+            }
         }
-
-        if (editDao.save(edit) == null)
-        {
-            return 400;
-        }
-        return 200;
+        return 400;
     }
 
     @Override

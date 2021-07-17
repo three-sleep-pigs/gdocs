@@ -47,7 +47,7 @@ public class LoginServiceImpl implements LoginService {
         Optional<GUser> optionalGUser = gUserDao.getGUserByUsername(username);
         if (optionalGUser.isPresent())
         {
-            return 401;
+            return 401;//用户已存在
         }
         GUser gUser = new GUser();
         gUser.setUsername(username);
@@ -56,6 +56,6 @@ public class LoginServiceImpl implements LoginService {
         {
             return 402;
         }
-        return 200;
+        return 200;//注册成功
     }
 }

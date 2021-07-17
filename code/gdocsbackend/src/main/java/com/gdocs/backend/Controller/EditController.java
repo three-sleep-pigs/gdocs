@@ -15,21 +15,6 @@ public class EditController {
     @Autowired
     private EditService editService;
 
-    @GetMapping("/home")
-    public String home() {
-        return "test";
-    }
-
-    @GetMapping("/")
-    //http://localhost
-    public String onlineProductExcel(ModelMap modelMap, HttpServletRequest request, @RequestParam(value = "id", defaultValue = "27") int id) {
-        String userName = "aa";
-        modelMap.addAttribute("recordId", "-1");
-        modelMap.addAttribute("userName", id);
-        modelMap.addAttribute("title", "协同演示");
-        return "online_excel";
-    }
-
     @PostMapping("/publicApi/excel/downData")
     @ResponseBody
     //http://localhost/publicApi/excel/downData?id=1
@@ -37,9 +22,7 @@ public class EditController {
         /***
          * 1.从数据库中读取id luckysheet记录
          */
-        System.out.print(id + "\r");
-        return editService.downExcelData(id,version);
+
+        return editService.downExcelData(id,version,edit);
     }
-
-
 }
