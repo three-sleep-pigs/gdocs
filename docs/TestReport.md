@@ -160,7 +160,7 @@
   
   *Single-Master DFS*  无法处理唯一的 master crash的问题，虽然可以通过与备份的 master 节点同步数据，记录log等方式保证一致性，但是却不能相应 client 请求，除非维护人员意识到 master 已经不在工作，重启新的master并通知对应的 chunk server 和 client，才能使系统恢复工作。
   
-  对于这个问题我们组考虑的解决办法是使用 zookeeper 设计 *Multi-Master DFS* ；也可以增加一个新的 view 节点，实时检测 master 的存活情况，并作出相应措施，但是这样view 节点的存活问题就会成为新的技术难点。s
+  对于这个问题我们组考虑的解决办法是使用 zookeeper 设计 *Multi-Master DFS* ；也可以增加一个新的 view 节点，实时检测 master 的存活情况，并作出相应措施，但是这样view 节点的存活问题就会成为新的技术难点。
 
 ### Multi-Master
 
