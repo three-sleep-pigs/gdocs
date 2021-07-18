@@ -1,4 +1,4 @@
 [Leader]   518021910515 - Xu Jiaqi: {28}%
 [Member 1] 518021910375 - Liao Yichen: {28}%
-[Member 2] 518021910456 - Li Xuan: {28}%
-[Member 3] 518030910168 - Guo Mengqi: {16}%
+[Member 2] 518021910456 - Li Xuan: {25}%
+[Member 3] 518030910168 - Guo Mengqi: {19}%
