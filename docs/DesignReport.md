@@ -96,97 +96,25 @@
   *chunk server* 会定期发送心跳信号给 *master*，除了让 *master* 知道这个 *chunk server* 还“活着” 外，还会附带 *lease* 信息， *master* 会返会给 *chunk server* 需要删掉的 *garbage*。
 
 * **Multi-Master Architecture**
-  
-  ![](./photos/multi.png)
-  
-  *Multi-Master DFS Architecture* 与 *Single-Master DFS Architecture* 最主要的区别在于将 *master* 保存的数据都放到 zookeeper ，以此来实现各个 master 节点之间数据的一致性
 
 ### 2. Basic Requirements
 
 * **Operation**
-  
-  *DFS* 通过HTTP协议为 *gDocs* 提供服务，以下是 *DFS* 提供的接口。
-  
-  基本功能：
-  
-  */create* 
-  
-  > request{"Path":string} 
-  > 
-  > response{"Success":bool, "Error":string}
-  
-  */delete* 
-  
-  > request{"Path":string}                             
-  > 
-  >  response{"Success":bool, "Error":string}
-  
-  */rename* 
-  
-  > request{"Source":string, "Target":string}           
-  > 
-  > response{"Success":bool, "Error":string}
-  
-  */mkdir*  
-  
-  > request{"Path":string}                             
-  > 
-  >  response{"Success":bool, "Error":string}
-  
-  */read*  
-  
-  > request{"Path":string, "Offset":int, "Length":int}  
-  > 
-  > response{"Success":bool, "Error":string, "Data":string}
-  
-  */write*  
-  
-  > request{"Path":string, "Offset":int, "Data":string} 
-  > 
-  > response{"Success":bool, "Error":string, "Size":int}
-  
-  附加功能：
-  
-  */append* 
-  
-  > request{"Path":string, "Data":string}              
-  > 
-  > response{"Success":bool, "Error":string, "Offset":int}
 
 * **Chunk**
-  
-  依照 *GFS* 将文件分解成大小固定的 *chunk* ，并在 *master* 中维护文件到 *chunk* 的映射关系。
 
 * **Replication**
-  
-  每个 *chunk* 在创建时会在不同的 *chunk server* 中创建多个备份，*chunk server* 和 *master* 都会保存 *chunk* 的 *version* 。*chunk server* 会定期给 *master* 发送 *heartbeat* 来检测 *chunk* 的版本并进行垃圾回收；*master* 会定期检测 *chunk* 的备份数量，为备份数量过少的 *chunk* 选择 *chunk server* 添加备份。
 
 * **Fault Tolerance**
-  
-  由于每个 *chunk* 有多个备份，只要一个 *chunk* 的所有备份不同时宕机，*master* 就能通过定期的系统检测为这个 *chunk* 重新添加备份，因此 *chunk server* 有很好的容错性。
-  
-  单 *master* 的实现中，*master* 一旦崩溃，系统就会停止工作。而多 *master* 的实现中，通过 *zookeeper* 来保障一致性，只要所有 *master* 不同时宕机，系统就能正常工作。
 
 * **Consistency**
-  
-  依照 *GFS* 的一致性模型，*master* 为每个 *chunk* 管理 *lease* ，在一段 *lease* 中只有一个 *chunk server* 作为 *primary* ，其他的备份实施 *mutation* 的顺序必须与 *primary* 一致（由*chunk version* 保证），由此保证 *chunk* 备份的一致性。当 *primary* 正在实施 *mutation* 时，若 *lease* 即将到期， *primary* 会向 *master* 发送请求延长 *lease* 。若 *primary* 宕机，*client* 会向 *master* 重新发送请求，*master* 会再次选出 *primary* 。
-  
-  单 *master* 的实现中，*metadata* 的一致性由 *concurrent map* 与读写锁保证。而多 *master* 的实现中，*metadata* 的一致性由 *zookeeper* 加 *spin lock* 保证。
 
 * **Concurrency Control**
-  
-  支持多 *client* 、多 *master* 、多 *chunk server* 、*zookeeper* 集群并发运行。
 
-### 3. Advanced Requirements
+* **Failure Recovery**
+  
+  ### 3. Advanced Requirements
 
 * **Scalability**
-  
-  *master* 和 *chunk server* 通过 *heartbeat* 进行动态连接，支持动态添加 *chunk server* ，具有良好的可扩展性。
 
 * **Efficiency**
-  
-  单 *master* 的实现中，采用 *concurrent map* 和读写锁来保证 *metadata* 的一致性，采用相对宽松的一致性模型来保证备份的一致性，获得了不错的性能表现（详情见测试报告中的性能测试）。而在多 *master* 的实现中，为了实现 *master* 的容错而引入了 *zookeeper* ，导致性能大幅降低。根据CAP原理，二者不能兼得。
-
-* **Other**
-  
-  在基本要求的接口之外，我们实现了 *append* 功能来支持高效的写操作，实现了能支持 *snapshot* 的数据结构来支持高效的文件复制操作，但由于时间限制没能完成 *snapshot* 的写时复制。
