@@ -1,4 +1,4 @@
-## Lab 2 - Naive gDocs
+# Naive gDocs
 #### main branch for Single-Master DFS Architecture
 #### multi-master branch for Multi-Master DFS Architecture
 
