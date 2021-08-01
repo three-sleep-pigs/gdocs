@@ -1,20 +1,13 @@
-## Lab 2 - Naive gDocs
+# Naive gDocs
 
-team members information:
+#### main branch for Single-Master DFS Architecture
 
-```
-[Leader]   518021910515 - 许嘉琦: {28}%
-[Member 1] 518021910375 - 廖苡辰: {28}%
-[Member 2] 518021910456 - 李萱: {25}%
-[Member 3] 518030910168 - 郭梦琪: {19}%
-```
+#### multi-master branch for Multi-Master DFS Architecture
 
 the structure of the repo of our team is:
 
 ```text
 your-repo/
-main branch for Single-Master DFS Architecture
-multi-master branch for Multi-Master DFS Architecture
 +-- README.md
 +-- .gitignore
 +-- code/
